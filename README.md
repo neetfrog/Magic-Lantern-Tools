@@ -69,7 +69,7 @@ Supports:
 
 ---
 
-### `ffmpeg_convert`
+### `SocialMediaRotate`
 
 Prepare cinemascope footage for social media.
 
@@ -91,7 +91,7 @@ Example:
 
 * Windows
 * PowerShell
-* FFmpeg — for `ffmpeg_convert`
+* FFmpeg — for `SocialMediaRotate`
 * MLVFS + Dokan — for `RightClickMountFolder`
 
 ## Typical Workflow
@@ -99,11 +99,9 @@ Example:
 ```text
 Camera Card
     ↓
-MLV-Importer
-    ↓
-MLV files
+MagicDump
     ↓
 MLVFS
     ↓
-Video editing
+Davinci Resolve
 ```
