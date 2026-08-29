@@ -1,132 +1,27 @@
-# Magic Lantern Importer
+# Magic Lantern MLV Importer
 
-Automatic SD / CF card importer for Windows 11.
+A robust, feature-rich automated Windows PowerShell tool designed specifically for **Magic Lantern** filmmakers and photographers. It monitors for inserted camera cards, automatically detects and copies RAW photos and Magic Lantern video files (including multi-part chunked `.MLV` and `.M00`, `.M01`, etc. sequences), verifies data integrity, manages safe cleanups, and can optionally trigger automated post-import workflows like **MLVFS** mounting.
 
-No Python required.
+---
 
-## Folder
+## Features
 
-Put everything here:
+- **Automated Drive Monitoring**: Continuously watches for newly mounted removable drives or camera cards.
+- **Intelligent File Classification**: Automatically categorizes files into Photos and Magic Lantern video segments (`.MLV` + `.M00`, `.M01`, etc.).
+- **Smart MLV Chunk Grouping**: Keeps split chunk files (`.MLV`, `.M02`, etc.) bound together as single recording entities, ensuring partial deletions or errors don't corrupt multi-file video spans.
+- **Data Integrity & Verification**: Supports file stability checks (ensuring files aren't still being written when detected) and post-copy verification via **Size** or **SHA-256** checksums[cite: 3, 4].
+- **Safe Copy Engine**: Uses temporary staging extensions (`.importing`) with configurable automatic retries and delay intervals to prevent partial or corrupted file writes[cite: 3, 4].
+- **Flexible Organization**: Supports both **Flat** dumping and structured **ByDate** directory organization based on file modification timestamps[cite: 3, 4].
+- **Post-Import Automation (MLVFS)**: Automatically triggers external batch scripts (such as an MLVFS controller) to mount successfully imported raw video folders[cite: 3, 4].
+- **Safety First**: Includes a **Dry Run** mode, confirmation dialogs for source card deletion, and strict policies preventing source deletion unless full copy verification passes[cite: 3, 4].
+- **Robust Logging & Notifications**: Full Windows Desktop balloon notifications and persistent timestamped log files stored locally[cite: 3, 4].
 
-C:\MLVScripts\MLV-Importer\
+---
 
-Files:
+## Project Structure
 
-- MLV-Importer.ps1
-- Config-GUI.ps1
-- Config-GUI.cmd
-- config.json
-
-## Setup
-
-1. Edit `config.json` or run:
-
-   `Config-GUI.cmd`
-
-2. Set:
-
-   - Photos destination
-   - MLV destination
-   - File types
-   - Verification
-   - Card options
-
-3. Click `Save && Start`.
-
-## Import
-
-Insert an SD/CF card.
-
-The importer automatically detects removable cards.
-
-Photos go directly into:
-
-`D:\Camera Import\Photos\`
-
-MLV files go directly into:
-
-`D:\Camera Import\MLV\`
-
-No DCIM/card subfolders are recreated.
-
-## MLV
-
-Magic Lantern split recordings are supported:
-
-- `.MLV`
-- `.M00`
-- `.M01`
-- `.M02`
-- etc.
-
-The complete recording is treated as one group.
-
-## Progress
-
-The command window shows:
-
-- Current file
-- File number
-- File percentage
-- Overall percentage
-- Bytes copied
-- Transfer speed
-- ETA
-
-Example:
-
-`File 3/12 | 64.2% | 8.4 GB / 13.1 GB | 92.5 MB/s | ETA 00:51`
-
-## Delete from card
-
-Disabled by default.
-
-Enable:
-
-`Delete files from card after successful verified import`
-
-Source files are deleted only after the copy has succeeded and verification has passed.
-
-For split MLV recordings, the entire group must succeed before any source files are deleted.
-
-A confirmation is shown when the importer starts.
-
-## Verification
-
-Recommended:
-
-`Size`
-
-For maximum verification:
-
-`SHA256`
-
-SHA256 is slower because the files must be read again.
-
-## Auto eject
-
-Optional.
-
-Enable `Eject card` in the GUI.
-
-## Logs
-
-Logs are stored in:
-
-`logs\importer.log`
-
-## Start manually
-
-Run:
-
-`Config-GUI.cmd`
-
-or:
-
-`powershell.exe -ExecutionPolicy Bypass -File MLV-Importer.ps1`
-
-## Stop
-
-Close the PowerShell window.
-
-Do not remove a card while a transfer is in progress.
+```text
+├── MLV-Importer.cmd         # Standard runner (keeps window open with summary)[cite: 1]
+├── Run-Once.cmd             # Single-run execution batch file[cite: 2]
+├── MLV-Importer.ps1         # Core PowerShell automation script[cite: 3]
+└── config.json              # Configuration file (paths, rules, toggles)
