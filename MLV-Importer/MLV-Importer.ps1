@@ -1,54 +1,46 @@
 #requires -version 5.1
 
-<#
-    ============================================================
-    Magic Lantern MLV Importer
-    Windows 11 / PowerShell 5.1+
-    ============================================================
-
-    Features:
-      - Automatic removable drive detection
-      - SD / CF reader support
-      - Camera-card detection
-      - Photo import
-      - MLV import
-      - MLV .M00-.M99 span files
-      - File stability checking
-      - Retry handling
-      - Temporary copy files
-      - Size / SHA256 verification
-      - Duplicate protection
-      - Persistent manifest
-      - Logging
-      - Notifications
-      - Optional automatic eject
-      - Dry-run mode
-      - Configurable organization
-      - No Python required
-      - No third-party modules required
-
-    IMPORTANT:
-      Source files are NEVER deleted or moved.
-#>
-
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 # ============================================================
-# GLOBAL PATHS
+# MAGIC LANTERN MLV / PHOTO IMPORTER
+# Windows 11 / PowerShell 5.1+
 # ============================================================
 
 $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
-
 $ConfigPath = Join-Path $ScriptRoot "config.json"
 
-$DefaultLogDirectory = Join-Path $ScriptRoot "logs"
-$DefaultManifestDirectory = Join-Path $ScriptRoot "manifests"
+# ============================================================
+# LOAD CONFIG
+# ============================================================
 
-$Global:Config = $null
+if (-not (Test-Path -LiteralPath $ConfigPath)) {
+    Write-Host ""
+    Write-Host "ERROR: config.json not found:" -ForegroundColor Red
+    Write-Host $ConfigPath
+    Write-Host ""
+    Read-Host "Press Enter to exit"
+    exit 1
+}
+
+try {
+    $Config = Get-Content `
+        -LiteralPath $ConfigPath `
+        -Raw `
+        -Encoding UTF8 |
+        ConvertFrom-Json
+}
+catch {
+    Write-Host ""
+    Write-Host "ERROR: Could not read config.json" -ForegroundColor Red
+    Write-Host $_.Exception.Message
+    Read-Host "Press Enter to exit"
+    exit 1
+}
 
 # ============================================================
-# BASIC HELPERS
+# SAFE CONFIG HELPER
 # ============================================================
 
 function Get-ConfigValue {
@@ -71,267 +63,309 @@ function Get-ConfigValue {
     return $Property.Value
 }
 
-function Test-PathSafe {
-    param(
-        [string]$Path
-    )
-
-    try {
-        return Test-Path -LiteralPath $Path
-    }
-    catch {
-        return $false
-    }
-}
-
 # ============================================================
-# CONFIG
+# SETTINGS
 # ============================================================
 
-function Load-Configuration {
+$PhotoDestination = [string](
+    Get-ConfigValue $Config.Destinations "Photos" "D:\Camera Import\Photos"
+)
 
-    if (-not (Test-PathSafe $ConfigPath)) {
+$MLVDestination = [string](
+    Get-ConfigValue $Config.Destinations "MLV" "D:\Camera Import\MLV"
+)
 
-        Write-Host ""
-        Write-Host "ERROR: config.json not found."
-        Write-Host "Expected:"
-        Write-Host $ConfigPath
-        Write-Host ""
+$OrganizationMode = [string](
+    Get-ConfigValue $Config.Organization "Mode" "Flat"
+)
 
-        exit 1
-    }
+$DateFormat = [string](
+    Get-ConfigValue $Config.Organization "DateFormat" "yyyy-MM-dd"
+)
 
-    try {
+$ScanSubfolders = [bool](
+    Get-ConfigValue $Config.Scanning "ScanSubfolders" $true
+)
 
-        $Raw = Get-Content `
-            -LiteralPath $ConfigPath `
-            -Raw `
-            -Encoding UTF8
+$SkipExisting = [bool](
+    Get-ConfigValue $Config.Copy "SkipExistingSameSize" $true
+)
 
-        $Global:Config = $Raw | ConvertFrom-Json
-    }
-    catch {
+$ReplaceDifferent = [bool](
+    Get-ConfigValue $Config.Copy "ReplaceDifferentSize" $false
+)
 
-        Write-Host ""
-        Write-Host "ERROR: Invalid config.json"
-        Write-Host $_.Exception.Message
-        Write-Host ""
+$UseTemporary = [bool](
+    Get-ConfigValue $Config.Copy "UseTemporaryFiles" $true
+)
 
-        exit 1
-    }
-}
+$TemporaryExtension = [string](
+    Get-ConfigValue $Config.Copy "TemporaryExtension" ".importing"
+)
 
-Load-Configuration
+$Retries = [int](
+    Get-ConfigValue $Config.Copy "Retries" 3
+)
+
+$RetryDelay = [int](
+    Get-ConfigValue $Config.Copy "RetryDelaySeconds" 3
+)
+
+$VerificationEnabled = [bool](
+    Get-ConfigValue $Config.Verification "Enabled" $true
+)
+
+$VerificationMethod = [string](
+    Get-ConfigValue $Config.Verification "Method" "Size"
+)
+
+$StabilityEnabled = [bool](
+    Get-ConfigValue $Config.Stability "Enabled" $true
+)
+
+$StabilityChecks = [int](
+    Get-ConfigValue $Config.Stability "Checks" 2
+)
+
+$StabilityDelay = [int](
+    Get-ConfigValue $Config.Stability "DelaySeconds" 2
+)
+
+$MLVChunkEnabled = [bool](
+    Get-ConfigValue $Config.FileTypes.MLVChunks "Enabled" $true
+)
+
+$OnlyRemovable = [bool](
+    Get-ConfigValue $Config.Card "OnlyRemovableDrives" $true
+)
+
+$AutoEject = [bool](
+    Get-ConfigValue $Config.Card "AutoEject" $false
+)
+
+$DeleteSource = [bool](
+    Get-ConfigValue $Config.Card "DeleteSourceAfterImport" $false
+)
+
+$RequireDeleteConfirmation = [bool](
+    Get-ConfigValue $Config.Card "RequireDeleteConfirmation" $true
+)
+
+$DryRun = [bool](
+    Get-ConfigValue $Config.Safety "DryRun" $false
+)
+
+$NeverDeleteUnlessVerified = [bool](
+    Get-ConfigValue `
+        $Config.Safety `
+        "NeverDeleteSourceUnlessVerified" `
+        $true
+)
+
+$ManifestEnabled = [bool](
+    Get-ConfigValue $Config.Manifest "Enabled" $true
+)
+
+$LoggingEnabled = [bool](
+    Get-ConfigValue $Config.Logging "Enabled" $true
+)
+
+$NotificationsEnabled = [bool](
+    Get-ConfigValue $Config.Notifications "Enabled" $true
+)
+
+$PollInterval = [int](
+    Get-ConfigValue $Config.Monitoring "PollIntervalSeconds" 2
+)
 
 # ============================================================
-# LOGGING
+# EXTENSIONS
 # ============================================================
 
-function Get-LogDirectory {
-
-    $Configured = Get-ConfigValue `
-        $Global:Config.Logging `
-        "Directory" `
-        "logs"
-
-    if ([System.IO.Path]::IsPathRooted($Configured)) {
-        return $Configured
+$PhotoExtensions = @(
+    @(
+        Get-ConfigValue `
+            $Config.FileTypes `
+            "Photos" `
+            @(
+                ".CR2",
+                ".CR3",
+                ".JPG",
+                ".JPEG",
+                ".JPE",
+                ".PNG",
+                ".TIF",
+                ".TIFF"
+            )
+    ) |
+    ForEach-Object {
+        $_.ToString().ToUpperInvariant()
     }
-
-    return Join-Path $ScriptRoot $Configured
-}
-
-function Get-LogFile {
-
-    $Directory = Get-LogDirectory
-
-    $FileName = Get-ConfigValue `
-        $Global:Config.Logging `
-        "FileName" `
-        "importer.log"
-
-    return Join-Path $Directory $FileName
-}
-
-function Initialize-Logging {
-
-    if (-not (Get-ConfigValue $Global:Config.Logging "Enabled" $true)) {
-        return
-    }
-
-    $Directory = Get-LogDirectory
-
-    if (-not (Test-PathSafe $Directory)) {
-
-        New-Item `
-            -ItemType Directory `
-            -Path $Directory `
-            -Force |
-            Out-Null
-    }
-
-    # Remove old logs if configured
-    $KeepDays = Get-ConfigValue `
-        $Global:Config.Logging `
-        "KeepDays" `
-        30
-
-    if ($KeepDays -gt 0) {
-
-        try {
-
-            Get-ChildItem `
-                -LiteralPath $Directory `
-                -File `
-                -ErrorAction SilentlyContinue |
-                Where-Object {
-                    $_.LastWriteTime -lt (Get-Date).AddDays(-$KeepDays)
-                } |
-                Remove-Item -Force -ErrorAction SilentlyContinue
-        }
-        catch {
-            # Logging cleanup must never stop importing
-        }
-    }
-}
-
-Initialize-Logging
-
-function Write-Log {
-
-    param(
-        [string]$Message,
-
-        [ValidateSet(
-            "INFO",
-            "SUCCESS",
-            "WARNING",
-            "ERROR",
-            "DEBUG"
-        )]
-        [string]$Level = "INFO"
-    )
-
-    $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-
-    $Line = "[{0}] [{1}] {2}" -f `
-        $Timestamp,
-        $Level,
-        $Message
-
-    Write-Host $Line
-
-    if (Get-ConfigValue $Global:Config.Logging "Enabled" $true) {
-
-        try {
-
-            Add-Content `
-                -LiteralPath (Get-LogFile) `
-                -Value $Line `
-                -Encoding UTF8
-        }
-        catch {
-            # Never crash because logging failed
-        }
-    }
-}
+)
 
 # ============================================================
 # DIRECTORIES
 # ============================================================
 
-function Resolve-ConfiguredPath {
-    param(
-        [string]$Path
-    )
-
-    if ([System.IO.Path]::IsPathRooted($Path)) {
-        return $Path
-    }
-
-    return Join-Path $ScriptRoot $Path
+if (-not (Test-Path -LiteralPath $PhotoDestination)) {
+    New-Item `
+        -ItemType Directory `
+        -Path $PhotoDestination `
+        -Force |
+        Out-Null
 }
 
-function Initialize-Directories {
-
-    $PhotoDestination = Resolve-ConfiguredPath `
-        $Global:Config.Destinations.Photos
-
-    $MLVDestination = Resolve-ConfiguredPath `
-        $Global:Config.Destinations.MLV
-
-    if (-not (Test-PathSafe $PhotoDestination)) {
-
-        New-Item `
-            -ItemType Directory `
-            -Path $PhotoDestination `
-            -Force |
-            Out-Null
-    }
-
-    if (-not (Test-PathSafe $MLVDestination)) {
-
-        New-Item `
-            -ItemType Directory `
-            -Path $MLVDestination `
-            -Force |
-            Out-Null
-    }
-
-    $ManifestDirectoryName = Get-ConfigValue `
-        $Global:Config.Manifest `
-        "Directory" `
-        "manifests"
-
-    if ([System.IO.Path]::IsPathRooted($ManifestDirectoryName)) {
-
-        $ManifestDirectory = $ManifestDirectoryName
-    }
-    else {
-
-        $ManifestDirectory = Join-Path `
-            $ScriptRoot `
-            $ManifestDirectoryName
-    }
-
-    if (-not (Test-PathSafe $ManifestDirectory)) {
-
-        New-Item `
-            -ItemType Directory `
-            -Path $ManifestDirectory `
-            -Force |
-            Out-Null
-    }
+if (-not (Test-Path -LiteralPath $MLVDestination)) {
+    New-Item `
+        -ItemType Directory `
+        -Path $MLVDestination `
+        -Force |
+        Out-Null
 }
 
-Initialize-Directories
+$LogDirectory = Join-Path `
+    $ScriptRoot `
+    (Get-ConfigValue $Config.Logging "Directory" "logs")
+
+$ManifestDirectory = Join-Path `
+    $ScriptRoot `
+    (Get-ConfigValue $Config.Manifest "Directory" "manifests")
+
+if ($LoggingEnabled) {
+    New-Item `
+        -ItemType Directory `
+        -Path $LogDirectory `
+        -Force |
+        Out-Null
+}
+
+if ($ManifestEnabled) {
+    New-Item `
+        -ItemType Directory `
+        -Path $ManifestDirectory `
+        -Force |
+        Out-Null
+}
+
+$LogFile = Join-Path `
+    $LogDirectory `
+    (Get-ConfigValue $Config.Logging "FileName" "importer.log")
 
 # ============================================================
-# NOTIFICATIONS
+# FORMATTING
+# ============================================================
+
+function Format-Bytes {
+    param(
+        [double]$Bytes
+    )
+
+    if ($Bytes -lt 1KB) {
+        return "{0:N0} B" -f $Bytes
+    }
+
+    if ($Bytes -lt 1MB) {
+        return "{0:N2} KB" -f ($Bytes / 1KB)
+    }
+
+    if ($Bytes -lt 1GB) {
+        return "{0:N2} MB" -f ($Bytes / 1MB)
+    }
+
+    if ($Bytes -lt 1TB) {
+        return "{0:N2} GB" -f ($Bytes / 1GB)
+    }
+
+    return "{0:N2} TB" -f ($Bytes / 1TB)
+}
+
+function Format-Speed {
+    param(
+        [double]$BytesPerSecond
+    )
+
+    return "$(Format-Bytes $BytesPerSecond)/s"
+}
+
+function Format-Time {
+    param(
+        [double]$Seconds
+    )
+
+    if ($Seconds -lt 0 -or [double]::IsNaN($Seconds)) {
+        return "--:--"
+    }
+
+    $Time = [TimeSpan]::FromSeconds($Seconds)
+
+    if ($Time.TotalHours -ge 1) {
+        return $Time.ToString("hh\:mm\:ss")
+    }
+
+    return $Time.ToString("mm\:ss")
+}
+
+# ============================================================
+# LOGGING
+# ============================================================
+
+function Write-Log {
+    param(
+        [string]$Message,
+        [string]$Level = "INFO"
+    )
+
+    $Line = "{0} [{1}] {2}" -f `
+        (Get-Date -Format "yyyy-MM-dd HH:mm:ss"),
+        $Level,
+        $Message
+
+    Write-Host $Line
+
+    if ($LoggingEnabled) {
+        Add-Content `
+            -LiteralPath $LogFile `
+            -Value $Line `
+            -Encoding UTF8
+    }
+}
+
+# ============================================================
+# NOTIFICATION
 # ============================================================
 
 function Show-Notification {
-
     param(
         [string]$Title,
         [string]$Message
     )
 
-    if (-not (Get-ConfigValue $Global:Config.Notifications "Enabled" $true)) {
+    if (-not $NotificationsEnabled) {
         return
     }
 
     try {
+        Add-Type -AssemblyName System.Windows.Forms
+        Add-Type -AssemblyName System.Drawing
 
-        # Windows PowerShell 5.1 has no guaranteed built-in
-        # toast API. Use the console bell as a universal fallback.
+        $Notify = New-Object System.Windows.Forms.NotifyIcon
 
-        [console]::beep(800, 120)
+        $Notify.Icon = [System.Drawing.SystemIcons]::Information
+        $Notify.Visible = $true
 
-        Write-Log "$Title - $Message" "INFO"
+        $Notify.ShowBalloonTip(
+            4000,
+            $Title,
+            $Message,
+            [System.Windows.Forms.ToolTipIcon]::Info
+        )
+
+        Start-Sleep -Milliseconds 4200
+
+        $Notify.Dispose()
     }
     catch {
-        # Notifications are optional
+        # Notification failure should never stop importing.
     }
 }
 
@@ -339,367 +373,103 @@ function Show-Notification {
 # DRIVE DETECTION
 # ============================================================
 
-function Get-RemovableDrives {
+function Get-EligibleDrives {
 
-    try {
+    $Drives = Get-CimInstance Win32_LogicalDisk
 
-        $Drives = Get-CimInstance `
-            Win32_LogicalDisk `
-            -Filter "DriveType=2"
-
-        return @(
-            $Drives |
+    if ($OnlyRemovable) {
+        $Drives = $Drives |
             Where-Object {
-
-                $DriveLetter = $_.DeviceID
-
-                $DriveLetter -and
-                (Test-PathSafe ($DriveLetter + "\"))
+                $_.DriveType -eq 2
             }
-        )
     }
-    catch {
-
-        Write-Log `
-            "Unable to query removable drives: $($_.Exception.Message)" `
-            "WARNING"
-
-        return @()
+    else {
+        $Drives = $Drives |
+            Where-Object {
+                $_.DriveType -in @(2, 3)
+            }
     }
-}
 
-# ============================================================
-# CARD NAME
-# ============================================================
-
-function Get-CardLabel {
-
-    param(
-        [string]$DriveRoot
-    )
-
-    try {
-
-        $Letter = $DriveRoot.TrimEnd('\')
-
-        $Disk = Get-CimInstance `
-            Win32_LogicalDisk `
-            -Filter "DeviceID='$Letter'"
-
-        if ($Disk.VolumeName) {
-            return $Disk.VolumeName
+    return @(
+        $Drives |
+        Where-Object {
+            -not [string]::IsNullOrWhiteSpace($_.DeviceID)
         }
-    }
-    catch {
-    }
-
-    return $DriveRoot.TrimEnd('\')
+    )
 }
 
 # ============================================================
-# FILE TYPE DETECTION
+# FILE TYPE
 # ============================================================
 
-function Is-PhotoFile {
-
+function Get-FileType {
     param(
         [System.IO.FileInfo]$File
     )
 
     $Extension = $File.Extension.ToUpperInvariant()
 
-    foreach ($Allowed in $Global:Config.FileTypes.Photos) {
-
-        if ($Extension -eq $Allowed.ToUpperInvariant()) {
-            return $true
-        }
+    if ($PhotoExtensions -contains $Extension) {
+        return "Photo"
     }
 
-    return $false
-}
-
-function Is-MLVMainFile {
-
-    param(
-        [System.IO.FileInfo]$File
-    )
-
-    return (
-        $File.Extension.ToUpperInvariant() -eq ".MLV"
-    )
-}
-
-function Is-MLVChunkFile {
-
-    param(
-        [System.IO.FileInfo]$File
-    )
-
-    $Settings = $Global:Config.FileTypes.MLVChunks
-
-    if (-not (Get-ConfigValue $Settings "Enabled" $true)) {
-        return $false
+    if ($Extension -eq ".MLV") {
+        return "MLV"
     }
-
-    $Pattern = Get-ConfigValue `
-        $Settings `
-        "Pattern" `
-        "^\.M[0-9]{2}$"
-
-    return (
-        $File.Extension.ToUpperInvariant() -match $Pattern
-    )
-}
-
-function Is-MLVFile {
-
-    param(
-        [System.IO.FileInfo]$File
-    )
-
-    return (
-        (Is-MLVMainFile $File) -or
-        (Is-MLVChunkFile $File)
-    )
-}
-
-# ============================================================
-# CAMERA CARD DETECTION
-# ============================================================
-
-function Test-CameraCard {
-
-    param(
-        [string]$DriveRoot
-    )
-
-    $MinimumFiles = [int](
-        Get-ConfigValue `
-            $Global:Config.Scanning `
-            "MinimumCameraFiles" `
-            1
-    )
-
-    $CameraFileCount = 0
-
-    try {
-
-        $AllFiles = Get-ChildItem `
-            -LiteralPath $DriveRoot `
-            -File `
-            -Recurse `
-            -Force `
-            -ErrorAction SilentlyContinue
-
-        foreach ($File in $AllFiles) {
-
-            if (Is-PhotoFile $File) {
-
-                $CameraFileCount++
-            }
-            elseif (Is-MLVFile $File) {
-
-                $CameraFileCount++
-            }
-
-            if ($CameraFileCount -ge $MinimumFiles) {
-
-                return $true
-            }
-        }
-    }
-    catch {
-
-        Write-Log `
-            "Camera-card scan failed for $DriveRoot : $($_.Exception.Message)" `
-            "WARNING"
-    }
-
-    return $false
-}
-
-# ============================================================
-# SAFE FILE ENUMERATION
-# ============================================================
-
-function Get-MediaFiles {
-
-    param(
-        [string]$DriveRoot
-    )
-
-    $IgnoreFolders = @(
-        Get-ConfigValue `
-            $Global:Config.Scanning `
-            "IgnoreFolders" `
-            @()
-    )
-
-    $ScanSubfolders = Get-ConfigValue `
-        $Global:Config.Scanning `
-        "ScanSubfolders" `
-        $true
-
-    try {
-
-        if ($ScanSubfolders) {
-
-            $Files = Get-ChildItem `
-                -LiteralPath $DriveRoot `
-                -File `
-                -Recurse `
-                -Force `
-                -ErrorAction SilentlyContinue
-        }
-        else {
-
-            $Files = Get-ChildItem `
-                -LiteralPath $DriveRoot `
-                -File `
-                -Force `
-                -ErrorAction SilentlyContinue
-        }
-
-        foreach ($File in $Files) {
-
-            $Ignore = $false
-
-            foreach ($Folder in $IgnoreFolders) {
-
-                if (
-                    $File.FullName -match
-                    [regex]::Escape($Folder)
-                ) {
-
-                    $Ignore = $true
-                    break
-                }
-            }
-
-            if ($Ignore) {
-                continue
-            }
-
-            if (
-                (Is-PhotoFile $File) -or
-                (Is-MLVFile $File)
-            ) {
-
-                $File
-            }
-        }
-    }
-    catch {
-
-        Write-Log `
-            "Media scan failed: $($_.Exception.Message)" `
-            "ERROR"
-    }
-}
-
-# ============================================================
-# RELATIVE PATH
-# ============================================================
-
-function Get-RelativePath {
-
-    param(
-        [string]$Root,
-        [string]$FullPath
-    )
-
-    $Root = $Root.TrimEnd('\') + '\'
 
     if (
-        $FullPath.StartsWith(
-            $Root,
-            [System.StringComparison]::OrdinalIgnoreCase
-        )
+        $MLVChunkEnabled -and
+        $Extension -match '^\.M[0-9]{2}$'
     ) {
-
-        return $FullPath.Substring($Root.Length)
+        return "MLVChunk"
     }
 
-    return Split-Path `
-        -Leaf `
-        -Path $FullPath
+    return $null
 }
 
 # ============================================================
-# DESTINATION ORGANIZATION
+# CAMERA FILE SCAN
 # ============================================================
 
-function Get-DestinationPath {
-
+function Get-CameraFiles {
     param(
-        [System.IO.FileInfo]$SourceFile,
-        [string]$SourceRoot,
-        [string]$DestinationRoot,
-        [string]$CardLabel
+        [string]$Root
     )
 
-    $Mode = Get-ConfigValue `
-        $Global:Config.Organization `
-        "Mode" `
-        "PreserveSourceFolders"
+    if (-not (Test-Path -LiteralPath $Root)) {
+        return @()
+    }
 
-    $Relative = Get-RelativePath `
-        -Root $SourceRoot `
-        -FullPath $SourceFile.FullName
+    if ($ScanSubfolders) {
 
-    switch ($Mode) {
+        $Files = Get-ChildItem `
+            -LiteralPath $Root `
+            -File `
+            -Recurse `
+            -ErrorAction SilentlyContinue
+    }
+    else {
 
-        "PreserveSourceFolders" {
+        $Files = Get-ChildItem `
+            -LiteralPath $Root `
+            -File `
+            -ErrorAction SilentlyContinue
+    }
 
-            return Join-Path `
-                $DestinationRoot `
-                $Relative
-        }
+    $Result = foreach ($File in $Files) {
 
-        "ByCard" {
+        $Type = Get-FileType $File
 
-            return Join-Path `
-                (Join-Path $DestinationRoot $CardLabel) `
-                $Relative
-        }
+        if ($null -ne $Type) {
 
-        "ByDate" {
-
-            $DateFolder = $SourceFile.LastWriteTime.ToString(
-                (Get-ConfigValue `
-                    $Global:Config.Organization `
-                    "DateFormat" `
-                    "yyyy-MM-dd")
-            )
-
-            return Join-Path `
-                (Join-Path $DestinationRoot $DateFolder) `
-                $SourceFile.Name
-        }
-
-        "ByDateAndCard" {
-
-            $DateFolder = $SourceFile.LastWriteTime.ToString(
-                (Get-ConfigValue `
-                    $Global:Config.Organization `
-                    "DateFormat" `
-                    "yyyy-MM-dd")
-            )
-
-            return Join-Path `
-                (Join-Path `
-                    (Join-Path $DestinationRoot $DateFolder) `
-                    $CardLabel) `
-                $SourceFile.Name
-        }
-
-        default {
-
-            return Join-Path `
-                $DestinationRoot `
-                $Relative
+            [PSCustomObject]@{
+                File = $File
+                Type = $Type
+            }
         }
     }
+
+    return @($Result)
 }
 
 # ============================================================
@@ -707,65 +477,50 @@ function Get-DestinationPath {
 # ============================================================
 
 function Test-FileStable {
-
     param(
-        [string]$Path
+        [System.IO.FileInfo]$File
     )
 
-    if (-not (Get-ConfigValue $Global:Config.Stability "Enabled" $true)) {
+    if (-not $StabilityEnabled) {
         return $true
     }
 
-    $Checks = [int](
-        Get-ConfigValue `
-            $Global:Config.Stability `
-            "Checks" `
-            2
-    )
+    $PreviousSize = -1
 
-    $Delay = [int](
-        Get-ConfigValue `
-            $Global:Config.Stability `
-            "DelaySeconds" `
-            3
-    )
+    for ($i = 0; $i -lt $StabilityChecks; $i++) {
 
-    $PreviousLength = -1
-    $StableCount = 0
-
-    while ($StableCount -lt $Checks) {
-
-        if (-not (Test-PathSafe $Path)) {
+        if (-not (Test-Path -LiteralPath $File.FullName)) {
             return $false
         }
 
         try {
 
-            $Info = Get-Item `
-                -LiteralPath $Path `
-                -Force
+            $Current = Get-Item `
+                -LiteralPath $File.FullName `
+                -ErrorAction Stop
 
-            $Length = $Info.Length
+            $CurrentSize = $Current.Length
+
+            if ($PreviousSize -ge 0) {
+
+                if ($CurrentSize -ne $PreviousSize) {
+
+                    $PreviousSize = $CurrentSize
+
+                    Start-Sleep `
+                        -Seconds $StabilityDelay
+
+                    continue
+                }
+            }
+
+            $PreviousSize = $CurrentSize
+
+            Start-Sleep `
+                -Seconds $StabilityDelay
         }
         catch {
-
             return $false
-        }
-
-        if ($Length -eq $PreviousLength) {
-
-            $StableCount++
-        }
-        else {
-
-            $StableCount = 0
-        }
-
-        $PreviousLength = $Length
-
-        if ($StableCount -lt $Checks) {
-
-            Start-Sleep -Seconds $Delay
         }
     }
 
@@ -773,118 +528,387 @@ function Test-FileStable {
 }
 
 # ============================================================
-# HASH
+# DESTINATION PATH
 # ============================================================
 
-function Get-FileSHA256 {
-
+function Get-DestinationPath {
     param(
-        [string]$Path
+        [System.IO.FileInfo]$File,
+        [string]$Type
     )
 
-    try {
-
-        return (
-            Get-FileHash `
-                -LiteralPath $Path `
-                -Algorithm SHA256
-        ).Hash.ToUpperInvariant()
+    if ($Type -eq "Photo") {
+        $Root = $PhotoDestination
     }
-    catch {
+    else {
+        $Root = $MLVDestination
+    }
 
-        Write-Log `
-            "SHA256 failed: $Path : $($_.Exception.Message)" `
-            "ERROR"
+    switch ($OrganizationMode) {
 
-        return $null
+        "Flat" {
+
+            return Join-Path `
+                $Root `
+                $File.Name
+        }
+
+        "ByDate" {
+
+            $DateFolder = $File.LastWriteTime.ToString($DateFormat)
+
+            $Folder = Join-Path `
+                $Root `
+                $DateFolder
+
+            if (-not (Test-Path -LiteralPath $Folder)) {
+
+                New-Item `
+                    -ItemType Directory `
+                    -Path $Folder `
+                    -Force |
+                    Out-Null
+            }
+
+            return Join-Path `
+                $Folder `
+                $File.Name
+        }
+
+        default {
+
+            # Flat is deliberately the safe fallback.
+            return Join-Path `
+                $Root `
+                $File.Name
+        }
     }
 }
 
 # ============================================================
-# VERIFY
+# HASH
 # ============================================================
 
-function Verify-Copy {
+function Get-FileHashSafe {
+    param(
+        [string]$Path
+    )
 
+    return (
+        Get-FileHash `
+            -LiteralPath $Path `
+            -Algorithm SHA256
+    ).Hash
+}
+
+# ============================================================
+# VERIFY COPY
+# ============================================================
+
+function Test-Copy {
     param(
         [string]$Source,
         [string]$Destination
     )
 
-    if (-not (Test-PathSafe $Destination)) {
-
-        Write-Log `
-            "Verification failed: destination missing: $Destination" `
-            "ERROR"
-
+    if (-not (Test-Path -LiteralPath $Source)) {
         return $false
     }
+
+    if (-not (Test-Path -LiteralPath $Destination)) {
+        return $false
+    }
+
+    $SourceInfo = Get-Item -LiteralPath $Source
+    $DestinationInfo = Get-Item -LiteralPath $Destination
+
+    if ($SourceInfo.Length -ne $DestinationInfo.Length) {
+        return $false
+    }
+
+    if (-not $VerificationEnabled) {
+        return $true
+    }
+
+    switch ($VerificationMethod) {
+
+        "None" {
+            return $true
+        }
+
+        "Size" {
+            return (
+                $SourceInfo.Length -eq
+                $DestinationInfo.Length
+            )
+        }
+
+        "SHA256" {
+
+            $SourceHash = Get-FileHashSafe $Source
+            $DestinationHash = Get-FileHashSafe $Destination
+
+            return (
+                $SourceHash -eq $DestinationHash
+            )
+        }
+
+        default {
+
+            return (
+                $SourceInfo.Length -eq
+                $DestinationInfo.Length
+            )
+        }
+    }
+}
+
+# ============================================================
+# COPY WITH LIVE SPEED / ETA
+# ============================================================
+
+function Copy-FileWithProgress {
+    param(
+        [string]$Source,
+        [string]$Destination,
+        [string]$DisplayName,
+        [int64]$OverallCompleted,
+        [int64]$OverallTotal,
+        [int]$FileNumber,
+        [int]$FileCount
+    )
+
+    $SourceStream = $null
+    $DestinationStream = $null
 
     try {
 
         $SourceInfo = Get-Item `
             -LiteralPath $Source `
-            -Force
+            -ErrorAction Stop
 
-        $DestinationInfo = Get-Item `
-            -LiteralPath $Destination `
-            -Force
+        $FileSize = [int64]$SourceInfo.Length
 
-        if ($SourceInfo.Length -ne $DestinationInfo.Length) {
+        if ($DryRun) {
 
-            Write-Log `
-                "Verification failed: size mismatch: $Destination" `
-                "ERROR"
-
-            return $false
-        }
-
-        $Method = Get-ConfigValue `
-            $Global:Config.Verification `
-            "Method" `
-            "Size"
-
-        if (
-            -not (Get-ConfigValue `
-                $Global:Config.Verification `
-                "Enabled" `
-                $true)
-        ) {
+            Write-Host ""
+            Write-Host "DRY RUN: $DisplayName" `
+                -ForegroundColor Yellow
 
             return $true
         }
 
-        if ($Method -eq "None") {
+        $DestinationDirectory = Split-Path `
+            $Destination `
+            -Parent
 
-            return $true
+        if (-not (Test-Path -LiteralPath $DestinationDirectory)) {
+
+            New-Item `
+                -ItemType Directory `
+                -Path $DestinationDirectory `
+                -Force |
+                Out-Null
         }
 
-        if ($Method -eq "Size") {
+        $SourceStream = New-Object `
+            System.IO.FileStream(
+                $Source,
+                [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::Read,
+                [System.IO.FileShare]::Read,
+                4MB,
+                [System.IO.FileOptions]::SequentialScan
+            )
 
-            return $true
-        }
+        $DestinationStream = New-Object `
+            System.IO.FileStream(
+                $Destination,
+                [System.IO.FileMode]::Create,
+                [System.IO.FileAccess]::Write,
+                [System.IO.FileShare]::None,
+                4MB,
+                [System.IO.FileOptions]::SequentialScan
+            )
 
-        if ($Method -eq "SHA256") {
+        $Buffer = New-Object byte[] (4MB)
 
-            Write-Log `
-                "SHA256 verification: $Destination" `
-                "DEBUG"
+        [int64]$Copied = 0
 
-            $SourceHash = Get-FileSHA256 $Source
-            $DestinationHash = Get-FileSHA256 $Destination
+        $StartTime = [DateTime]::UtcNow
 
-            if (
-                $null -eq $SourceHash -or
-                $null -eq $DestinationHash
-            ) {
+        $LastDisplay = $StartTime
 
-                return $false
+        while ($Copied -lt $FileSize) {
+
+            $BytesRead = $SourceStream.Read(
+                $Buffer,
+                0,
+                $Buffer.Length
+            )
+
+            if ($BytesRead -le 0) {
+                break
             }
 
-            if ($SourceHash -ne $DestinationHash) {
+            $DestinationStream.Write(
+                $Buffer,
+                0,
+                $BytesRead
+            )
+
+            $Copied += $BytesRead
+
+            $Now = [DateTime]::UtcNow
+
+            $Elapsed = (
+                $Now - $StartTime
+            ).TotalSeconds
+
+            if ($Elapsed -le 0) {
+                $Elapsed = 0.001
+            }
+
+            $Speed = $Copied / $Elapsed
+
+            if ($Speed -gt 0) {
+
+                $Remaining = $FileSize - $Copied
+
+                $ETA = $Remaining / $Speed
+            }
+            else {
+                $ETA = -1
+            }
+
+            $OverallNow = $OverallCompleted + $Copied
+
+            if (
+                (($Now - $LastDisplay).TotalMilliseconds -ge 150) -or
+                ($Copied -eq $FileSize)
+            ) {
+
+                $FilePercent = if ($FileSize -gt 0) {
+                    ($Copied / $FileSize) * 100
+                }
+                else {
+                    100
+                }
+
+                $OverallPercent = if ($OverallTotal -gt 0) {
+                    ($OverallNow / $OverallTotal) * 100
+                }
+                else {
+                    100
+                }
+
+                Write-Progress `
+                    -Id 1 `
+                    -Activity "Importing camera card" `
+                    -Status (
+                        "File {0}/{1} | {2:N1}% | {3} / {4} | {5} | ETA {6}" -f `
+                        $FileNumber,
+                        $FileCount,
+                        $FilePercent,
+                        (Format-Bytes $Copied),
+                        (Format-Bytes $FileSize),
+                        (Format-Speed $Speed),
+                        (Format-Time $ETA)
+                    ) `
+                    -PercentComplete ([Math]::Min(
+                        100,
+                        [Math]::Max(0, [int]$FilePercent)
+                    ))
+
+                Write-Progress `
+                    -Id 2 `
+                    -ParentId 1 `
+                    -Activity "Overall card progress" `
+                    -Status (
+                        "{0:N1}% | {1} / {2} | {3} | ETA {4}" -f `
+                        $OverallPercent,
+                        (Format-Bytes $OverallNow),
+                        (Format-Bytes $OverallTotal),
+                        (Format-Speed $Speed),
+                        (Format-Time (
+                            if ($Speed -gt 0) {
+                                ($OverallTotal - $OverallNow) / $Speed
+                            }
+                            else {
+                                -1
+                            }
+                        ))
+                    ) `
+                    -PercentComplete ([Math]::Min(
+                        100,
+                        [Math]::Max(0, [int]$OverallPercent)
+                    ))
+
+                $LastDisplay = $Now
+            }
+        }
+
+        $DestinationStream.Flush()
+
+        $DestinationStream.Flush($true)
+
+        if ($Copied -ne $FileSize) {
+
+            throw `
+                "Copy ended early. Expected $FileSize bytes, copied $Copied bytes."
+        }
+
+        return $true
+    }
+    finally {
+
+        if ($null -ne $DestinationStream) {
+            $DestinationStream.Dispose()
+        }
+
+        if ($null -ne $SourceStream) {
+            $SourceStream.Dispose()
+        }
+    }
+}
+
+# ============================================================
+# COPY ONE FILE SAFELY
+# ============================================================
+
+function Copy-SafeFile {
+    param(
+        [System.IO.FileInfo]$SourceFile,
+        [string]$Destination,
+        [int64]$OverallCompleted,
+        [int64]$OverallTotal,
+        [int]$FileNumber,
+        [int]$FileCount
+    )
+
+    if (Test-Path -LiteralPath $Destination) {
+
+        $Existing = Get-Item `
+            -LiteralPath $Destination
+
+        if (
+            $SkipExisting -and
+            $Existing.Length -eq $SourceFile.Length
+        ) {
+
+            Write-Host ""
+            Write-Host "Already exists:" `
+                -ForegroundColor Cyan
+
+            Write-Host "  $($SourceFile.Name)"
+
+            # Even when skipped, verify before allowing deletion.
+            if (-not (Test-Copy `
+                $SourceFile.FullName `
+                $Destination)) {
 
                 Write-Log `
-                    "SHA256 mismatch: $Destination" `
+                    "Existing destination failed verification: $Destination" `
                     "ERROR"
 
                 return $false
@@ -893,455 +917,311 @@ function Verify-Copy {
             return $true
         }
 
-        return $true
-    }
-    catch {
-
-        Write-Log `
-            "Verification error: $($_.Exception.Message)" `
-            "ERROR"
-
-        return $false
-    }
-}
-
-# ============================================================
-# MANIFEST
-# ============================================================
-
-function Get-ManifestDirectory {
-
-    $Configured = Get-ConfigValue `
-        $Global:Config.Manifest `
-        "Directory" `
-        "manifests"
-
-    return Resolve-ConfiguredPath $Configured
-}
-
-function Get-ManifestPath {
-
-    param(
-        [string]$DriveRoot
-    )
-
-    $SafeName = $DriveRoot `
-        -replace '[\\/:*?"<>|]', '_' `
-        -replace '_+$', ''
-
-    if ([string]::IsNullOrWhiteSpace($SafeName)) {
-        $SafeName = "drive"
-    }
-
-    return Join-Path `
-        (Get-ManifestDirectory) `
-        ($SafeName + ".json")
-}
-
-function Load-Manifest {
-
-    param(
-        [string]$DriveRoot
-    )
-
-    if (
-        -not (Get-ConfigValue `
-            $Global:Config.Manifest `
-            "Enabled" `
-            $true)
-    ) {
-
-        return @{}
-    }
-
-    $Path = Get-ManifestPath $DriveRoot
-
-    if (-not (Test-PathSafe $Path)) {
-
-        return @{}
-    }
-
-    try {
-
-        $Raw = Get-Content `
-            -LiteralPath $Path `
-            -Raw `
-            -Encoding UTF8
-
-        if ([string]::IsNullOrWhiteSpace($Raw)) {
-            return @{}
-        }
-
-        $Object = $Raw | ConvertFrom-Json
-
-        $Manifest = @{}
-
-        foreach ($Property in $Object.PSObject.Properties) {
-
-            $Manifest[$Property.Name] = $Property.Value
-        }
-
-        return $Manifest
-    }
-    catch {
-
-        Write-Log `
-            "Manifest could not be loaded: $Path" `
-            "WARNING"
-
-        return @{}
-    }
-}
-
-function Save-Manifest {
-
-    param(
-        [string]$DriveRoot,
-        [hashtable]$Manifest
-    )
-
-    if (
-        -not (Get-ConfigValue `
-            $Global:Config.Manifest `
-            "Enabled" `
-            $true)
-    ) {
-
-        return
-    }
-
-    try {
-
-        $Path = Get-ManifestPath $DriveRoot
-
-        $Manifest |
-            ConvertTo-Json -Depth 10 |
-            Set-Content `
-                -LiteralPath $Path `
-                -Encoding UTF8
-    }
-    catch {
-
-        Write-Log `
-            "Could not save manifest: $($_.Exception.Message)" `
-            "WARNING"
-    }
-}
-
-# ============================================================
-# FILE ID
-# ============================================================
-
-function Get-FileIdentity {
-
-    param(
-        [System.IO.FileInfo]$File
-    )
-
-    return "{0}|{1}|{2}" -f `
-        $File.Name.ToUpperInvariant(),
-        $File.Length,
-        $File.LastWriteTimeUtc.Ticks
-}
-
-# ============================================================
-# SAFE COPY
-# ============================================================
-
-function Copy-MediaFile {
-
-    param(
-        [System.IO.FileInfo]$SourceFile,
-        [string]$Destination,
-        [hashtable]$Manifest,
-        [string]$SourceRoot
-    )
-
-    $DryRun = Get-ConfigValue `
-        $Global:Config.Safety `
-        "DryRun" `
-        $false
-
-    $Identity = Get-FileIdentity $SourceFile
-
-    # --------------------------------------------------------
-    # Manifest duplicate check
-    # --------------------------------------------------------
-
-    if ($Manifest.ContainsKey($Identity)) {
-
-        $PreviousDestination = [string]$Manifest[$Identity]
-
-        if (
-            $PreviousDestination -and
-            (Test-PathSafe $PreviousDestination)
-        ) {
+        if (-not $ReplaceDifferent) {
 
             Write-Log `
-                "MANIFEST SKIP: $($SourceFile.Name)" `
-                "DEBUG"
+                "Destination exists and replacement disabled: $Destination" `
+                "ERROR"
 
-            return "Skipped"
+            return $false
         }
-    }
 
-    # --------------------------------------------------------
-    # Existing destination
-    # --------------------------------------------------------
+        Write-Host ""
+        Write-Host "Replacing existing file:" `
+            -ForegroundColor Yellow
 
-    if (Test-PathSafe $Destination) {
+        Write-Host "  $Destination"
 
-        $Existing = Get-Item `
+        Remove-Item `
             -LiteralPath $Destination `
             -Force
-
-        if (
-            (Get-ConfigValue `
-                $Global:Config.Copy `
-                "SkipExistingSameSize" `
-                $true) -and
-            ($Existing.Length -eq $SourceFile.Length)
-        ) {
-
-            Write-Log `
-                "SKIP existing: $Destination" `
-                "INFO"
-
-            $Manifest[$Identity] = $Destination
-
-            return "Skipped"
-        }
-
-        if (-not (
-            Get-ConfigValue `
-                $Global:Config.Copy `
-                "ReplaceDifferentSize" `
-                $false
-        )) {
-
-            Write-Log `
-                "CONFLICT - destination exists with different size: $Destination" `
-                "WARNING"
-
-            return "Conflict"
-        }
     }
-
-    # --------------------------------------------------------
-    # Dry run
-    # --------------------------------------------------------
-
-    if ($DryRun) {
-
-        Write-Log `
-            "DRY RUN: $($SourceFile.FullName) -> $Destination" `
-            "INFO"
-
-        return "DryRun"
-    }
-
-    # --------------------------------------------------------
-    # Check source stability
-    # --------------------------------------------------------
-
-    if (-not (Test-FileStable $SourceFile.FullName)) {
-
-        Write-Log `
-            "Source file is not stable: $($SourceFile.FullName)" `
-            "WARNING"
-
-        return "Failed"
-    }
-
-    # --------------------------------------------------------
-    # Ensure destination directory
-    # --------------------------------------------------------
-
-    $DestinationDirectory = Split-Path `
-        $Destination `
-        -Parent
-
-    if (-not (Test-PathSafe $DestinationDirectory)) {
-
-        New-Item `
-            -ItemType Directory `
-            -Path $DestinationDirectory `
-            -Force |
-            Out-Null
-    }
-
-    # --------------------------------------------------------
-    # Temporary destination
-    # --------------------------------------------------------
-
-    $UseTemporary = Get-ConfigValue `
-        $Global:Config.Copy `
-        "UseTemporaryFiles" `
-        $true
-
-    $TempExtension = Get-ConfigValue `
-        $Global:Config.Copy `
-        "TemporaryExtension" `
-        ".importing"
-
-    if ($UseTemporary) {
-
-        $TemporaryDestination = `
-            $Destination + $TempExtension
-
-        # Remove stale temp file
-        if (Test-PathSafe $TemporaryDestination) {
-
-            try {
-                Remove-Item `
-                    -LiteralPath $TemporaryDestination `
-                    -Force
-            }
-            catch {
-            }
-        }
-    }
-    else {
-
-        $TemporaryDestination = $Destination
-    }
-
-    # --------------------------------------------------------
-    # Copy with retries
-    # --------------------------------------------------------
-
-    $Retries = [int](
-        Get-ConfigValue `
-            $Global:Config.Copy `
-            "Retries" `
-            3
-    )
-
-    $RetryDelay = [int](
-        Get-ConfigValue `
-            $Global:Config.Copy `
-            "RetryDelaySeconds" `
-            3
-    )
 
     for ($Attempt = 1; $Attempt -le $Retries; $Attempt++) {
 
+        $TempPath = $Destination
+
+        if ($UseTemporary) {
+
+            $TempPath =
+                $Destination +
+                $TemporaryExtension
+
+            if (Test-Path -LiteralPath $TempPath) {
+
+                Remove-Item `
+                    -LiteralPath $TempPath `
+                    -Force `
+                    -ErrorAction SilentlyContinue
+            }
+        }
+
         try {
 
-            Write-Log `
-                "COPY [$Attempt/$Retries]: $($SourceFile.FullName)" `
-                "INFO"
+            Write-Host ""
+            Write-Host "[$FileNumber/$FileCount] $($SourceFile.Name)" `
+                -ForegroundColor White
 
-            Copy-Item `
-                -LiteralPath $SourceFile.FullName `
-                -Destination $TemporaryDestination `
-                -Force
+            Write-Host "  Size: $(Format-Bytes $SourceFile.Length)"
 
-            # Verify before rename
-            if (-not (
-                Verify-Copy `
-                    -Source $SourceFile.FullName `
-                    -Destination $TemporaryDestination
-            )) {
+            if ($Attempt -gt 1) {
 
-                throw "Verification failed."
+                Write-Host "  Attempt: $Attempt/$Retries" `
+                    -ForegroundColor Yellow
             }
 
-            # ------------------------------------------------
-            # Atomic-ish finalization
-            # ------------------------------------------------
+            if ($DryRun) {
+
+                Write-Host "  DRY RUN - copy skipped" `
+                    -ForegroundColor Yellow
+
+                return $true
+            }
+
+            $CopiedOK = Copy-FileWithProgress `
+                -Source $SourceFile.FullName `
+                -Destination $TempPath `
+                -DisplayName $SourceFile.Name `
+                -OverallCompleted $OverallCompleted `
+                -OverallTotal $OverallTotal `
+                -FileNumber $FileNumber `
+                -FileCount $FileCount
+
+            if (-not $CopiedOK) {
+                throw "Copy operation failed."
+            }
+
+            if (-not (Test-Copy `
+                $SourceFile.FullName `
+                $TempPath)) {
+
+                throw "Temporary file verification failed."
+            }
 
             if ($UseTemporary) {
 
-                if (Test-PathSafe $Destination) {
-
-                    Remove-Item `
-                        -LiteralPath $Destination `
-                        -Force
-                }
-
                 Move-Item `
-                    -LiteralPath $TemporaryDestination `
+                    -LiteralPath $TempPath `
                     -Destination $Destination `
                     -Force
             }
 
+            if (-not (Test-Copy `
+                $SourceFile.FullName `
+                $Destination)) {
+
+                throw "Final destination verification failed."
+            }
+
+            Write-Host ""
+            Write-Host "  OK - verified" `
+                -ForegroundColor Green
+
             Write-Log `
-                "SUCCESS: $Destination" `
-                "SUCCESS"
+                "Successfully imported: $($SourceFile.FullName)"
 
-            $Manifest[$Identity] = $Destination
-
-            return "Copied"
+            return $true
         }
         catch {
 
             Write-Log `
-                "Copy attempt $Attempt failed: $($_.Exception.Message)" `
-                "WARNING"
+                "Attempt $Attempt failed for $($SourceFile.Name): $($_.Exception.Message)" `
+                "ERROR"
+
+            Write-Host ""
+            Write-Host "  FAILED: $($_.Exception.Message)" `
+                -ForegroundColor Red
+
+            if (Test-Path -LiteralPath $TempPath) {
+
+                Remove-Item `
+                    -LiteralPath $TempPath `
+                    -Force `
+                    -ErrorAction SilentlyContinue
+            }
 
             if ($Attempt -lt $Retries) {
 
-                Start-Sleep -Seconds $RetryDelay
+                Start-Sleep `
+                    -Seconds $RetryDelay
             }
         }
     }
 
-    Write-Log `
-        "FAILED: $($SourceFile.FullName)" `
-        "ERROR"
-
-    return "Failed"
+    return $false
 }
 
 # ============================================================
-# EJECT
+# MLV GROUPING
 # ============================================================
 
-function Eject-Drive {
-
+function Get-MLVGroups {
     param(
-        [string]$DriveRoot
+        [array]$MLVFiles
     )
 
-    $Delay = [int](
-        Get-ConfigValue `
-            $Global:Config.Card `
-            "EjectDelaySeconds" `
-            2
+    $Groups = @{}
+
+    foreach ($Item in $MLVFiles) {
+
+        $File = $Item.File
+
+        if ($File.Extension.ToUpperInvariant() -eq ".MLV") {
+
+            $Key = [System.IO.Path]::Combine(
+                $File.DirectoryName,
+                $File.BaseName
+            )
+
+            if (-not $Groups.ContainsKey($Key)) {
+                $Groups[$Key] = @()
+            }
+
+            $Groups[$Key] += $Item
+        }
+    }
+
+    foreach ($Item in $MLVFiles) {
+
+        $File = $Item.File
+
+        if (
+            $File.Extension.ToUpperInvariant() -match
+            '^\.M[0-9]{2}$'
+        ) {
+
+            $BaseName = [System.IO.Path]::GetFileNameWithoutExtension(
+                $File.Name
+            )
+
+            $Key = [System.IO.Path]::Combine(
+                $File.DirectoryName,
+                $BaseName
+            )
+
+            if (-not $Groups.ContainsKey($Key)) {
+                $Groups[$Key] = @()
+            }
+
+            $Groups[$Key] += $Item
+        }
+    }
+
+    foreach ($Key in @($Groups.Keys)) {
+
+        $Groups[$Key] = @(
+            $Groups[$Key] |
+            Sort-Object {
+                if ($_.File.Extension.ToUpperInvariant() -eq ".MLV") {
+                    -1
+                }
+                else {
+                    try {
+                        [int](
+                            $_.File.Extension.Substring(2)
+                        )
+                    }
+                    catch {
+                        999999
+                    }
+                }
+            }
+        )
+    }
+
+    return $Groups
+}
+
+# ============================================================
+# SAFE SOURCE DELETE
+# ============================================================
+
+function Remove-ImportedSource {
+    param(
+        [array]$Items
     )
 
-    Start-Sleep -Seconds $Delay
+    if (-not $DeleteSource) {
+        return $true
+    }
 
-    try {
+    if ($DryRun) {
 
-        $DriveLetter = $DriveRoot.TrimEnd('\')
+        Write-Host ""
+        Write-Host "DRY RUN: source deletion skipped." `
+            -ForegroundColor Yellow
 
-        $Shell = New-Object -ComObject Shell.Application
+        return $true
+    }
 
-        $Drive = $Shell.Namespace(17).ParseName($DriveLetter)
+    if ($NeverDeleteUnlessVerified) {
 
-        if ($null -eq $Drive) {
+        foreach ($Item in $Items) {
 
-            Write-Log `
-                "Could not obtain eject object for $DriveLetter" `
-                "WARNING"
+            $SourcePath = $Item.File.FullName
 
-            return
+            if (-not (Test-Path -LiteralPath $SourcePath)) {
+                return $false
+            }
+        }
+    }
+
+    foreach ($Item in $Items) {
+
+        $Path = $Item.File.FullName
+
+        if (-not (Test-Path -LiteralPath $Path)) {
+            continue
         }
 
-        $Drive.InvokeVerb("Eject")
+        try {
 
-        Write-Log `
-            "Eject command sent: $DriveLetter" `
-            "SUCCESS"
-    }
-    catch {
+            # Final verification immediately before deletion.
+            $Destination = Get-DestinationPath `
+                $Item.File `
+                $(if ($Item.Type -eq "Photo") {
+                    "Photo"
+                }
+                else {
+                    "MLV"
+                })
 
-        Write-Log `
-            "Eject failed: $($_.Exception.Message)" `
-            "WARNING"
+            if ($NeverDeleteUnlessVerified) {
+
+                if (-not (Test-Copy `
+                    $Path `
+                    $Destination)) {
+
+                    Write-Log `
+                        "REFUSING TO DELETE - verification failed: $Path" `
+                        "ERROR"
+
+                    return $false
+                }
+            }
+
+            Write-Host ""
+            Write-Host "Deleting source:" `
+                -ForegroundColor Yellow
+
+            Write-Host "  $Path"
+
+            Remove-Item `
+                -LiteralPath $Path `
+                -Force `
+                -ErrorAction Stop
+        }
+        catch {
+
+            Write-Log `
+                "Could not delete source: $Path - $($_.Exception.Message)" `
+                "ERROR"
+
+            return $false
+        }
     }
+
+    return $true
 }
 
 # ============================================================
@@ -1349,381 +1229,502 @@ function Eject-Drive {
 # ============================================================
 
 function Import-Card {
-
     param(
         [string]$DriveRoot
     )
 
-    Write-Log ""
-    Write-Log "============================================================"
-    Write-Log "CARD DETECTED: $DriveRoot"
-    Write-Log "============================================================"
+    Write-Log "Scanning card: $DriveRoot"
 
-    $CardLabel = Get-CardLabel $DriveRoot
+    Write-Host ""
+    Write-Host "============================================================" `
+        -ForegroundColor DarkGray
 
-    Write-Log "Card label: $CardLabel"
+    Write-Host " CAMERA CARD: $DriveRoot" `
+        -ForegroundColor Cyan
 
-    $MountSettle = [int](
-        Get-ConfigValue `
-            $Global:Config.Monitoring `
-            "MountSettleSeconds" `
-            3
-    )
+    Write-Host "============================================================" `
+        -ForegroundColor DarkGray
 
-    Start-Sleep -Seconds $MountSettle
+    $Files = Get-CameraFiles $DriveRoot
 
-    if (-not (Test-PathSafe $DriveRoot)) {
+    if ($Files.Count -eq 0) {
 
-        Write-Log `
-            "Card disappeared during mount initialization." `
-            "WARNING"
+        Write-Log "No camera files found."
 
-        return
+        return $false
     }
 
-    if (-not (Test-CameraCard $DriveRoot)) {
-
-        Write-Log `
-            "Not recognized as a camera card: $DriveRoot" `
-            "INFO"
-
-        return
-    }
-
-    Show-Notification `
-        "Camera card detected" `
-        "$CardLabel is ready for import."
-
     # --------------------------------------------------------
-    # Scan
+    # PHOTOS
     # --------------------------------------------------------
-
-    Write-Log "Scanning media files..."
-
-    $MediaFiles = @(
-        Get-MediaFiles $DriveRoot
-    )
 
     $Photos = @(
-        $MediaFiles |
+        $Files |
         Where-Object {
-            Is-PhotoFile $_
+            $_.Type -eq "Photo"
         }
     )
+
+    # --------------------------------------------------------
+    # MLV GROUPS
+    # --------------------------------------------------------
 
     $MLVFiles = @(
-        $MediaFiles |
+        $Files |
         Where-Object {
-            Is-MLVFile $_
+            $_.Type -in @(
+                "MLV",
+                "MLVChunk"
+            )
         }
     )
 
-    Write-Log "Photos found: $($Photos.Count)"
-    Write-Log "MLV/span files found: $($MLVFiles.Count)"
+    $MLVGroups = Get-MLVGroups $MLVFiles
 
     # --------------------------------------------------------
-    # Manifest
+    # BUILD WORK LIST
     # --------------------------------------------------------
 
-    $Manifest = Load-Manifest $DriveRoot
+    $WorkItems = New-Object System.Collections.ArrayList
 
-    # --------------------------------------------------------
-    # Counters
-    # --------------------------------------------------------
+    foreach ($Item in $Photos) {
 
-    $Stats = @{
-        Copied = 0
-        Skipped = 0
-        Failed = 0
-        Conflict = 0
-        DryRun = 0
-        Photos = 0
-        MLV = 0
+        [void]$WorkItems.Add(
+            [PSCustomObject]@{
+                File = $Item.File
+                Type = "Photo"
+                Group = @($Item)
+            }
+        )
+    }
+
+    foreach ($Key in $MLVGroups.Keys) {
+
+        $Group = @($MLVGroups[$Key])
+
+        if ($Group.Count -gt 0) {
+
+            [void]$WorkItems.Add(
+                [PSCustomObject]@{
+                    File = $Group[0].File
+                    Type = "MLVGroup"
+                    Group = $Group
+                }
+            )
+        }
     }
 
     # --------------------------------------------------------
-    # PHOTO IMPORT
+    # TOTAL BYTES
     # --------------------------------------------------------
 
-    foreach ($Photo in $Photos) {
+    [int64]$TotalBytes = 0
 
-        if (-not (Test-PathSafe $DriveRoot)) {
+    foreach ($Work in $WorkItems) {
 
-            Write-Log `
-                "CARD REMOVED DURING PHOTO IMPORT!" `
-                "ERROR"
+        foreach ($Item in $Work.Group) {
 
-            return
+            $TotalBytes += [int64]$Item.File.Length
+        }
+    }
+
+    $TotalFiles = 0
+
+    foreach ($Work in $WorkItems) {
+        $TotalFiles += $Work.Group.Count
+    }
+
+    Write-Host ""
+    Write-Host "Files found: $TotalFiles" `
+        -ForegroundColor Cyan
+
+    Write-Host "Total size:  $(Format-Bytes $TotalBytes)" `
+        -ForegroundColor Cyan
+
+    if ($DeleteSource) {
+
+        Write-Host ""
+        Write-Host "WARNING: SOURCE DELETE IS ENABLED" `
+            -ForegroundColor Red
+    }
+
+    Write-Host ""
+
+    # --------------------------------------------------------
+    # PROCESS
+    # --------------------------------------------------------
+
+    [int64]$OverallCompleted = 0
+    $SuccessfulFiles = 0
+    $FailedFiles = 0
+    $FileNumber = 0
+
+    foreach ($Work in $WorkItems) {
+
+        $GroupSuccess = $true
+
+        foreach ($Item in $Work.Group) {
+
+            $FileNumber++
+
+            if (-not (Test-FileStable $Item.File)) {
+
+                Write-Log `
+                    "File was not stable: $($Item.File.FullName)" `
+                    "ERROR"
+
+                $GroupSuccess = $false
+                $FailedFiles++
+
+                continue
+            }
+
+            $Destination = Get-DestinationPath `
+                $Item.File `
+                $(if ($Item.Type -eq "Photo") {
+                    "Photo"
+                }
+                else {
+                    "MLV"
+                })
+
+            $Success = Copy-SafeFile `
+                -SourceFile $Item.File `
+                -Destination $Destination `
+                -OverallCompleted $OverallCompleted `
+                -OverallTotal $TotalBytes `
+                -FileNumber $FileNumber `
+                -FileCount $TotalFiles
+
+            if ($Success) {
+
+                $SuccessfulFiles++
+
+                $OverallCompleted += [int64]$Item.File.Length
+            }
+            else {
+
+                $FailedFiles++
+
+                $GroupSuccess = $false
+            }
         }
 
-        $Destination = Get-DestinationPath `
-            -SourceFile $Photo `
-            -SourceRoot $DriveRoot `
-            -DestinationRoot (
-                Resolve-ConfiguredPath `
-                    $Global:Config.Destinations.Photos
-            ) `
-            -CardLabel $CardLabel
+        # ----------------------------------------------------
+        # DELETE GROUP ONLY AFTER EVERYTHING SUCCEEDED
+        # ----------------------------------------------------
 
-        $Result = Copy-MediaFile `
-            -SourceFile $Photo `
-            -Destination $Destination `
-            -Manifest $Manifest `
-            -SourceRoot $DriveRoot
+        if ($GroupSuccess -and $DeleteSource) {
 
-        switch ($Result) {
+            Write-Host ""
+            Write-Host "Import verified. Removing source files..." `
+                -ForegroundColor Yellow
 
-            "Copied" {
-                $Stats.Copied++
-                $Stats.Photos++
+            if (-not (Remove-ImportedSource $Work.Group)) {
+
+                Write-Log `
+                    "Source deletion failed for group." `
+                    "ERROR"
             }
+            else {
 
-            "Skipped" {
-                $Stats.Skipped++
-                $Stats.Photos++
-            }
-
-            "Failed" {
-                $Stats.Failed++
-            }
-
-            "Conflict" {
-                $Stats.Conflict++
-            }
-
-            "DryRun" {
-                $Stats.DryRun++
-                $Stats.Photos++
+                Write-Host "Source cleanup complete." `
+                    -ForegroundColor Green
             }
         }
-
-        # Save manifest periodically
-        if (
-            ($Stats.Copied % 10) -eq 0 -and
-            $Stats.Copied -gt 0
+        elseif (
+            -not $GroupSuccess -and
+            $Work.Type -eq "MLVGroup"
         ) {
 
-            Save-Manifest `
-                -DriveRoot $DriveRoot `
-                -Manifest $Manifest
+            Write-Host ""
+            Write-Host "MLV group NOT deleted because one or more files failed." `
+                -ForegroundColor Red
         }
     }
 
-    # --------------------------------------------------------
-    # MLV IMPORT
-    #
-    # Sequential intentionally:
-    # large MLV files can be hundreds of GB and memory/storage
-    # bandwidth is generally the bottleneck.
-    # --------------------------------------------------------
-
-    foreach ($MLV in $MLVFiles) {
-
-        if (-not (Test-PathSafe $DriveRoot)) {
-
-            Write-Log `
-                "CARD REMOVED DURING MLV IMPORT!" `
-                "ERROR"
-
-            return
-        }
-
-        $Destination = Get-DestinationPath `
-            -SourceFile $MLV `
-            -SourceRoot $DriveRoot `
-            -DestinationRoot (
-                Resolve-ConfiguredPath `
-                    $Global:Config.Destinations.MLV
-            ) `
-            -CardLabel $CardLabel
-
-        $Result = Copy-MediaFile `
-            -SourceFile $MLV `
-            -Destination $Destination `
-            -Manifest $Manifest `
-            -SourceRoot $DriveRoot
-
-        switch ($Result) {
-
-            "Copied" {
-                $Stats.Copied++
-                $Stats.MLV++
-            }
-
-            "Skipped" {
-                $Stats.Skipped++
-                $Stats.MLV++
-            }
-
-            "Failed" {
-                $Stats.Failed++
-            }
-
-            "Conflict" {
-                $Stats.Conflict++
-            }
-
-            "DryRun" {
-                $Stats.DryRun++
-                $Stats.MLV++
-            }
-        }
-
-        Save-Manifest `
-            -DriveRoot $DriveRoot `
-            -Manifest $Manifest
-    }
+    Write-Progress -Id 2 -Activity "Overall card progress" -Completed
+    Write-Progress -Id 1 -Activity "Importing camera card" -Completed
 
     # --------------------------------------------------------
-    # Final manifest save
+    # SUMMARY
     # --------------------------------------------------------
 
-    Save-Manifest `
-        -DriveRoot $DriveRoot `
-        -Manifest $Manifest
+    Write-Host ""
+    Write-Host "============================================================" `
+        -ForegroundColor DarkGray
 
-    # --------------------------------------------------------
-    # Summary
-    # --------------------------------------------------------
+    if ($FailedFiles -eq 0) {
 
-    Write-Log ""
-    Write-Log "IMPORT FINISHED: $CardLabel"
-    Write-Log "  Copied:    $($Stats.Copied)"
-    Write-Log "  Skipped:   $($Stats.Skipped)"
-    Write-Log "  Failed:    $($Stats.Failed)"
-    Write-Log "  Conflicts: $($Stats.Conflict)"
-    Write-Log "  Dry run:   $($Stats.DryRun)"
-    Write-Log "  Photos:    $($Stats.Photos)"
-    Write-Log "  MLV:       $($Stats.MLV)"
-    Write-Log ""
-
-    if ($Stats.Failed -gt 0 -or $Stats.Conflict -gt 0) {
-
-        Show-Notification `
-            "Import finished with problems" `
-            "$CardLabel - failed: $($Stats.Failed), conflicts: $($Stats.Conflict)"
+        Write-Host " IMPORT COMPLETE" `
+            -ForegroundColor Green
     }
     else {
 
-        Show-Notification `
-            "Import complete" `
-            "$CardLabel - copied: $($Stats.Copied), skipped: $($Stats.Skipped)"
+        Write-Host " IMPORT FINISHED WITH ERRORS" `
+            -ForegroundColor Red
     }
 
-    # --------------------------------------------------------
-    # Optional eject
-    # --------------------------------------------------------
+    Write-Host " Successful files: $SuccessfulFiles"
+    Write-Host " Failed files:     $FailedFiles"
+    Write-Host " Total size:       $(Format-Bytes $TotalBytes)"
 
-    if (
-        (Get-ConfigValue `
-            $Global:Config.Card `
-            "AutoEject" `
-            $false) -and
-        (Test-PathSafe $DriveRoot)
-    ) {
+    Write-Host "============================================================" `
+        -ForegroundColor DarkGray
 
-        Eject-Drive $DriveRoot
+    Write-Log `
+        "Card complete. Successful: $SuccessfulFiles | Failed: $FailedFiles"
+
+    return ($FailedFiles -eq 0)
+}
+
+# ============================================================
+# DELETE CONFIRMATION
+# ============================================================
+
+function Confirm-DeleteMode {
+
+    if (-not $DeleteSource) {
+        return $true
+    }
+
+    if (-not $RequireDeleteConfirmation) {
+        return $true
+    }
+
+    try {
+
+        Add-Type -AssemblyName System.Windows.Forms
+
+        $Result = [System.Windows.Forms.MessageBox]::Show(
+            "DELETE FROM CAMERA CARD IS ENABLED.`n`n" +
+            "Files will ONLY be deleted after a successful verified import.`n`n" +
+            "MLV split files are treated as a group.`n`n" +
+            "Do you want to continue?",
+            "Magic Lantern Importer - DELETE ENABLED",
+            [System.Windows.Forms.MessageBoxButtons]::YesNo,
+            [System.Windows.Forms.MessageBoxIcon]::Warning,
+            [System.Windows.Forms.MessageBoxDefaultButton]::Button2
+        )
+
+        return (
+            $Result -eq
+            [System.Windows.Forms.DialogResult]::Yes
+        )
+    }
+    catch {
+
+        Write-Host ""
+        Write-Host "Could not display delete confirmation." `
+            -ForegroundColor Red
+
+        return $false
     }
 }
 
 # ============================================================
-# MAIN
+# EJECT
 # ============================================================
 
-Write-Log ""
-Write-Log "============================================================"
-Write-Log "Magic Lantern MLV Importer"
-Write-Log "============================================================"
-Write-Log "Script: $ScriptRoot"
-Write-Log "Photos: $($Global:Config.Destinations.Photos)"
-Write-Log "MLV:    $($Global:Config.Destinations.MLV)"
-Write-Log "Dry run: $($Global:Config.Safety.DryRun)"
-Write-Log "============================================================"
-Write-Log ""
+function Eject-Drive {
+    param(
+        [string]$DriveRoot
+    )
 
-$KnownDrives = @{}
+    if (-not $AutoEject) {
+        return
+    }
 
-# ------------------------------------------------------------
-# Detect drives already connected when program starts
-#
-# We deliberately mark them as known instead of immediately
-# importing them. This prevents accidental re-import every time
-# the application starts.
-# ------------------------------------------------------------
+    try {
 
-foreach ($Drive in Get-RemovableDrives) {
+        Write-Log "Ejecting card: $DriveRoot"
 
-    $Root = $Drive.DeviceID + "\"
+        $Shell = New-Object -ComObject Shell.Application
 
-    $KnownDrives[$Root] = $true
+        $DriveLetter = $DriveRoot.Substring(0, 2)
 
-    Write-Log "Existing removable drive: $Root" "DEBUG"
+        $Drive = $Shell.Namespace(17).ParseName($DriveLetter)
+
+        if ($null -ne $Drive) {
+            $Drive.InvokeVerb("Eject")
+        }
+
+        Write-Log "Eject requested."
+    }
+    catch {
+
+        Write-Log `
+            "Could not eject card: $($_.Exception.Message)" `
+            "ERROR"
+    }
 }
 
-Write-Log "Waiting for SD/CF cards..."
-Write-Log "Press CTRL+C to stop."
-Write-Log ""
+# ============================================================
+# STARTUP
+# ============================================================
 
-# ------------------------------------------------------------
-# Infinite monitoring loop
-# ------------------------------------------------------------
+Clear-Host
+
+Write-Host ""
+Write-Host "============================================================" `
+    -ForegroundColor Cyan
+
+Write-Host "          MAGIC LANTERN CAMERA IMPORTER" `
+    -ForegroundColor Cyan
+
+Write-Host "============================================================" `
+    -ForegroundColor Cyan
+
+Write-Host ""
+Write-Host "Photos destination:"
+Write-Host "  $PhotoDestination"
+
+Write-Host ""
+Write-Host "MLV destination:"
+Write-Host "  $MLVDestination"
+
+Write-Host ""
+Write-Host "Organization:"
+Write-Host "  $OrganizationMode"
+
+Write-Host ""
+Write-Host "Verification:"
+Write-Host "  $VerificationMethod"
+
+Write-Host ""
+Write-Host "Delete source after import:"
+if ($DeleteSource) {
+    Write-Host "  ENABLED" -ForegroundColor Red
+}
+else {
+    Write-Host "  Disabled" -ForegroundColor Green
+}
+
+Write-Host ""
+
+Write-Log "Magic Lantern Importer started."
+
+# ============================================================
+# DELETE CONFIRMATION
+# ============================================================
+
+if ($DeleteSource) {
+
+    if (-not (Confirm-DeleteMode)) {
+
+        Write-Log `
+            "Startup cancelled because source deletion was enabled."
+
+        Write-Host ""
+        Write-Host "Cancelled." `
+            -ForegroundColor Yellow
+
+        exit 0
+    }
+}
+
+# ============================================================
+# DRIVE MONITOR
+# ============================================================
+
+$ProcessedDrives = @{}
 
 while ($true) {
 
     try {
 
-        $CurrentDrives = @{}
+        $Drives = Get-EligibleDrives
 
-        foreach ($Drive in Get-RemovableDrives) {
+        foreach ($Drive in $Drives) {
 
             $Root = $Drive.DeviceID + "\"
 
-            $CurrentDrives[$Root] = $true
+            if ($ProcessedDrives.ContainsKey($Root)) {
+                continue
+            }
 
-            if (-not $KnownDrives.ContainsKey($Root)) {
+            $Files = Get-CameraFiles $Root
 
-                try {
+            if ($Files.Count -lt (
+                Get-ConfigValue `
+                    $Config.Scanning `
+                    "MinimumCameraFiles" `
+                    1
+            )) {
+                continue
+            }
 
-                    Import-Card $Root
-                }
-                catch {
+            Write-Log "Camera card detected: $Root"
 
-                    Write-Log `
-                        "Unhandled import error: $($_.Exception.Message)" `
-                        "ERROR"
+            Show-Notification `
+                "Magic Lantern Importer" `
+                "Camera card detected: $Root"
 
-                    if (
-                        Get-ConfigValue `
-                            $Global:Config.Notifications `
-                            "OnError" `
-                            $true
-                    ) {
+            # Give USB/card reader a moment to settle.
+            $MountSettle = [int](
+                Get-ConfigValue `
+                    $Config.Monitoring `
+                    "MountSettleSeconds" `
+                    3
+            )
 
-                        Show-Notification `
-                            "MLV Importer error" `
-                            $_.Exception.Message
-                    }
-                }
+            if ($MountSettle -gt 0) {
+                Start-Sleep -Seconds $MountSettle
+            }
+
+            $Success = Import-Card $Root
+
+            if ($Success) {
+
+                $ProcessedDrives[$Root] = Get-Date
+
+                Write-Log `
+                    "Import completed successfully: $Root"
+
+                Show-Notification `
+                    "Magic Lantern Importer" `
+                    "Import completed: $Root"
+
+                Eject-Drive $Root
+            }
+            else {
+
+                Write-Log `
+                    "Import finished with errors: $Root" `
+                    "ERROR"
+
+                Show-Notification `
+                    "Magic Lantern Importer" `
+                    "Import finished with errors: $Root"
             }
         }
 
-        $KnownDrives = $CurrentDrives
-
-        Start-Sleep -Seconds (
-            [int](
-                Get-ConfigValue `
-                    $Global:Config.Monitoring `
-                    "PollIntervalSeconds" `
-                    2
-            )
+        # Forget cards that have been removed.
+        $CurrentRoots = @(
+            $Drives |
+            ForEach-Object {
+                $_.DeviceID + "\"
+            }
         )
+
+        foreach ($OldRoot in @($ProcessedDrives.Keys)) {
+
+            if ($CurrentRoots -notcontains $OldRoot) {
+
+                $ProcessedDrives.Remove($OldRoot)
+            }
+        }
     }
     catch {
 
         Write-Log `
-            "Main monitoring loop error: $($_.Exception.Message)" `
+            "Monitor error: $($_.Exception.Message)" `
             "ERROR"
 
-        Start-Sleep -Seconds 5
+        Write-Host ""
+        Write-Host "Monitor error: $($_.Exception.Message)" `
+            -ForegroundColor Red
     }
+
+    Start-Sleep -Seconds $PollInterval
 }
