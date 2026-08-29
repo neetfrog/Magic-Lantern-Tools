@@ -121,8 +121,3 @@ MLVFS
     ↓
 Video editing
 ```
-```
-
-## Repository
-
-https://github.com/neetfrog/Magic-Lantern-Tools
