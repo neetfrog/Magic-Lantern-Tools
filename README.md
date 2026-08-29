@@ -15,7 +15,6 @@ The folder structure should look like:
 
 ```text
 C:\MLVScripts\
-├── AddBorders\
 ├── MLV-Importer\
 ├── RightClickMountFolder\
 └── ffmpeg_convert\
@@ -24,19 +23,6 @@ C:\MLVScripts\
 Some tools also require additional software such as **FFmpeg**, **MLVFS**, or **Dokan**.
 
 ## Tools
-
-### `AddBorders`
-
-Adds a white border around images. Not exactly Magic Lantern related but i find it useful when i need to batch add frames to many photos.
-
-* Supports JPG, JPEG, PNG, BMP and WebP
-* Configurable border size
-* Originals are kept untouched
-* Output goes into a `Bordered` folder
-
-`InstallRightClick.reg` adds it to the Windows Explorer context menu.
-
----
 
 ### `MLV-Importer`
 
