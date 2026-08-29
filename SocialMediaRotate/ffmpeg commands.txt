@@ -1,3 +1,0 @@
-$input="input.mp4"; .\ffmpeg.exe -i $input -vf "transpose=1,pad='max(iw,ih*9/16)':'max(ih,iw*16/9)':(ow-iw)/2:(oh-ih)/2:black" -c:v libx264 -crf 0 -preset veryslow -c:a copy "$([System.IO.Path]::GetFileNameWithoutExtension($input))_encoded.mp4"
-
-If you want visually indistinguishable quality but dramatically smaller files, I'd recommend -crf 16–18 instead of -crf 0. For most sources, CRF 16 is an excellent "don't sacrifice noticeable quality" setting.
