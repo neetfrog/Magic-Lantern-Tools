@@ -117,15 +117,10 @@ MLV-Importer
     ↓
 MLV files
     ↓
-MLVFS / FFmpeg
+MLVFS
     ↓
 Video editing
 ```
-
-For photos:
-
-```text
-Photos → AddBorders → Bordered/
 ```
 
 ## Repository
