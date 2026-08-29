@@ -1118,10 +1118,20 @@ function Import-Card {
     }
 
     [int64]$TotalBytes = 0
+    [int64]$PhotoBytes = 0
+    [int64]$MLVBytes = 0
 
     foreach ($Work in @($WorkItems)) {
         foreach ($Item in @($Work.Group)) {
-            $TotalBytes += [int64]$Item.File.Length
+            $Length = [int64]$Item.File.Length
+            $TotalBytes += $Length
+            
+            if ($Item.Type -eq "Photo") {
+                $PhotoBytes += $Length
+            }
+            else {
+                $MLVBytes += $Length
+            }
         }
     }
 
@@ -1134,6 +1144,8 @@ function Import-Card {
     Write-Host ""
     Write-Host "Files found: $TotalFiles" -ForegroundColor Cyan
     Write-Host "Total size:  $(Format-Bytes $TotalBytes)" -ForegroundColor Cyan
+    Write-Host " - Photos:   $(Format-Bytes $PhotoBytes)" -ForegroundColor Cyan
+    Write-Host " - MLVs:     $(Format-Bytes $MLVBytes)" -ForegroundColor Cyan
 
     if ($DeleteSource) {
         Write-Host ""
@@ -1273,6 +1285,8 @@ function Import-Card {
     Write-Host " Successful files: $SuccessfulFiles"
     Write-Host " Failed files:     $FailedFiles"
     Write-Host " Total size:       $(Format-Bytes $TotalBytes)"
+    Write-Host "  - Photos:        $(Format-Bytes $PhotoBytes)"
+    Write-Host "  - MLVs:          $(Format-Bytes $MLVBytes)"
 
     Write-Host "============================================================" `
         -ForegroundColor DarkGray
