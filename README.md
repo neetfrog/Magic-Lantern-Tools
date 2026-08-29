@@ -85,9 +85,13 @@ Supports:
 
 ### `ffmpeg_convert`
 
-Converts videos to H.264 MP4 using FFmpeg.
+Prepare cinemascope footage for social media.
 
-`convert-video.ps1` handles rotation, padding, H.264 encoding and audio copying.
+`convert-video.ps1` - 🔄 Rotates the video 90°
+- 📐 Dynamically handles different aspect ratios
+- ⬛ Adds black borders to fit a 16:9 frame
+- 🎞️ Preserves the original image without stretching or cropping
+- 📱 Makes ultra-wide footage more usable on phones
 
 Example:
 
