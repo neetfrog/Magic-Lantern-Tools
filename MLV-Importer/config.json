@@ -5,7 +5,7 @@
                          "MLV":  "D:\\Camera\\MLV"
                      },
     "Organization":  {
-                         "Mode":  "Flat",
+                         "Mode":  "ByDate",
                          "DateFormat":  "yyyy-MM-dd"
                      },
     "FileTypes":  {
@@ -58,9 +58,9 @@
                    },
     "Card":  {
                  "OnlyRemovableDrives":  true,
-                 "AutoEject":  true,
+                 "AutoEject":  false,
                  "EjectDelaySeconds":  2,
-                 "DeleteSourceAfterImport":  true,
+                 "DeleteSourceAfterImport":  false,
                  "RequireDeleteConfirmation":  true
              },
     "Safety":  {
