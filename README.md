@@ -27,7 +27,7 @@ Some tools also require additional software such as **FFmpeg**, **MLVFS**, or **
 
 ### `AddBorders`
 
-Adds a white border around images.
+Adds a white border around images. Not exactly Magic Lantern related but i find it useful when i need to batch add frames to many photos.
 
 * Supports JPG, JPEG, PNG, BMP and WebP
 * Configurable border size
