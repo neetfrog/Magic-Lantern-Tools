@@ -1,15 +1,15 @@
+````md
 # Magic Lantern Tools
 
-A collection of Windows tools for working with **Magic Lantern / MLV footage**.
+Windows tools for **Magic Lantern / MLV workflows**.
 
 ## Installation
 
-1. Download or clone this repository.
-2. Place the tool folders in:
+Clone or download the repository and place the tool folders in:
 
 ```text
 C:\MLVScripts
-```
+````
 
 The folder structure should look like:
 
@@ -21,38 +21,33 @@ C:\MLVScripts\
 └── ffmpeg_convert\
 ```
 
-Some tools also require additional software such as **FFmpeg**, **MLVFS**, or **Dokan**.
-
 ## Tools
 
 ### `AddBorders`
 
-Adds a white border around images.
+Adds a configurable **white border** to images.
 
-* Supports JPG, JPEG, PNG, BMP and WebP
-* Configurable border size
-* Originals are kept untouched
-* Output goes into a `Bordered` folder
-
-`InstallRightClick.reg` adds it to the Windows Explorer context menu.
-
----
+* JPG, JPEG, PNG, BMP, WebP
+* Custom border size
+* Keeps original files untouched
+* Outputs to `Bordered\`
+* Windows Explorer context menu
 
 ### `MLV-Importer`
 
-Automatically imports MLV and photo files from removable camera cards.
+Automatically imports **MLV and photo files** from camera cards.
 
 * Detects removable drives
-* Copies MLV and photo files
 * Configurable destinations
 * Optional file verification
 * Logs and manifests
 * Dry-run mode
+* One-time or continuous operation
 
-Configure:
+Configuration:
 
 ```text
-MLV-Importer/config.json
+MLV-Importer\config.json
 ```
 
 Run once:
@@ -67,27 +62,31 @@ Run continuously:
 Start-MLV-Importer.cmd
 ```
 
----
-
 ### `RightClickMountFolder`
 
 Mounts MLV folders as virtual drives using **MLVFS + Dokan**.
 
-Supports:
-
-* Normal MLVFS mounting
+* MLVFS mounting
 * Dual-ISO mounting
 * Unmounting
-
-`UpdateMenu.reg` adds the commands to the Windows Explorer right-click menu.
-
----
+* Windows Explorer context menu
 
 ### `ffmpeg_convert`
 
-Converts videos to H.264 MP4 using FFmpeg.
+Prepares **cinemascope footage for social media**.
 
-`convert-video.ps1` handles rotation, padding, H.264 encoding and audio copying.
+* Rotates video 90°
+* Dynamically handles different aspect ratios
+* Adds black borders to fit **16:9**
+* No stretching or cropping
+* H.264 MP4 output
+* Copies audio
+
+Especially useful for wide formats such as **2.39:1**.
+
+```text
+2.39:1 → Rotate 90° → Dynamic Padding → 16:9
+```
 
 Example:
 
@@ -95,35 +94,54 @@ Example:
 .\convert-video.ps1 "C:\Videos\clip.mov"
 ```
 
-`install-context-menu.reg` adds the converter to Windows Explorer.
-
 ## Requirements
 
 * Windows
 * PowerShell
-* FFmpeg — for `ffmpeg_convert`
-* MLVFS + Dokan — for `RightClickMountFolder`
+* **FFmpeg** — `ffmpeg_convert`
+* **MLVFS + Dokan** — `RightClickMountFolder`
 
 ## Typical Workflow
+
+### Video
 
 ```text
 Camera Card
     ↓
 MLV-Importer
     ↓
-MLV files
+MLV Files
     ↓
 MLVFS / FFmpeg
     ↓
-Video editing
+Video Editing
 ```
 
-For photos:
+### Photos
 
 ```text
-Photos → AddBorders → Bordered/
+Photos
+    ↓
+AddBorders
+    ↓
+Bordered\
 ```
+
+## Windows Explorer Integration
+
+Some tools include `.reg` files for adding actions to the Windows Explorer context menu.
+
+* `AddBorders` → `InstallRightClick.reg`
+* `RightClickMountFolder` → `UpdateMenu.reg`
+* `ffmpeg_convert` → `install-context-menu.reg`
+
+## Backup
+
+Always verify imported footage before formatting or erasing a camera card.
 
 ## Repository
 
-https://github.com/neetfrog/Magic-Lantern-Tools
+[https://github.com/neetfrog/Magic-Lantern-Tools](https://github.com/neetfrog/Magic-Lantern-Tools)
+
+```
+```
