@@ -97,7 +97,7 @@ https://www.magiclantern.fm/forum/index.php?topic=13152.0 <- MLVFS thread on Mag
 1. Download the repository and extract to:
 
 ```text
-C:\MLVFS
+C:\MLVScripts\MLVFS
 ```
 
 2. Install Dokan:
@@ -121,7 +121,7 @@ This adds **Mount folder with MLVFS** to Windows Explorer.
 If MLVFS bundle is located in other directory than:
 
 ```text
-C:\MLVFS
+C:\MLVScripts\MLVFS
 ```
 
 edit:
@@ -136,7 +136,7 @@ RightClickMountFolder\MLV_Controller.bat
 Run **CMD as Administrator**:
 
 ```bat
-cd C:\MLVFS\MLVFS_x64_lossless
+cd C:\MLVScripts\MLVFS\MLVFS_x64_lossless
 mlvfs_x64_lossless.exe Z:\ --mlv-dir=C:\MLVDirectory --resolve-naming
 ```
 
@@ -158,7 +158,7 @@ dokanctl.exe /u
 
 # DaVinci Resolve Workflow Tips
 
-# Audio sync issues:
+# Audio sync issues
 
 if DNG sequences do not auto-sync WAV audio (happens with 60fps footage using 5dmk3, not sure about the other modes/cameras) do the following:
 
@@ -191,7 +191,7 @@ to select only DNG clips.
 
 Using Resolve's **Audio Sync** method is preferred over manually linking audio in the timeline because it keeps proper clip/audio retiming behavior.
 
-# Automatically desqueeze footage:
+# Automatically desqueeze footage
 
 Go to Project Settings -> Image Scaling and set Mismatched Resolution Files dropdown to Stretch Frame to all Corners. Just make sure your Timeline aspect ratio is set to the same one as your source footage.
 
