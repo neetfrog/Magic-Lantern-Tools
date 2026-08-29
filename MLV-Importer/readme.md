@@ -1,116 +1,132 @@
-# Magic Lantern MLV Importer
+# Magic Lantern Importer
 
-Automatic SD/CF card importer for **Windows 11**.
+Automatic SD / CF card importer for Windows 11.
 
-Copies:
+No Python required.
 
-* `.CR2`, `.CR3`, `.JPG`, `.JPEG`, etc. → Photos folder
-* `.MLV`, `.M00`, `.M01`, `.M02`, etc. → MLV folder
+## Folder
 
-The original card files are **never deleted or moved**.
+Put everything here:
 
-## Files
+C:\MLVScripts\MLV-Importer\
 
-```text
-MLV-Importer\
-├── MLV-Importer.ps1
-├── config.json
-├── Start-MLV-Importer.cmd
-├── Run-Once.cmd
-├── logs\
-└── manifests\
-```
+Files:
+
+- MLV-Importer.ps1
+- Config-GUI.ps1
+- Config-GUI.cmd
+- config.json
 
 ## Setup
 
-1. Create a folder, e.g.
+1. Edit `config.json` or run:
 
-```text
-C:\MLV-Importer
-```
+   `Config-GUI.cmd`
 
-2. Put the files above inside it.
+2. Set:
 
-3. Edit `config.json`:
+   - Photos destination
+   - MLV destination
+   - File types
+   - Verification
+   - Card options
 
-```json
-"Destinations": {
-    "Photos": "D:\\Camera Import\\Photos",
-    "MLV": "D:\\Camera Import\\MLV"
-}
-```
+3. Click `Save && Start`.
 
-4. Double-click:
+## Import
 
-```text
-Start-MLV-Importer.cmd
-```
+Insert an SD/CF card.
 
-The program will wait for an SD/CF card.
+The importer automatically detects removable cards.
 
-## Test first
+Photos go directly into:
 
-Set:
+`D:\Camera Import\Photos\`
 
-```json
-"DryRun": true
-```
+MLV files go directly into:
 
-in `config.json`.
+`D:\Camera Import\MLV\`
 
-This shows what would be imported without copying anything.
-
-When ready:
-
-```json
-"DryRun": false
-```
+No DCIM/card subfolders are recreated.
 
 ## MLV
 
-Split recordings are handled automatically:
+Magic Lantern split recordings are supported:
 
-```text
-MVI_0001.MLV
-MVI_0001.M00
-MVI_0001.M01
-MVI_0001.M02
-```
+- `.MLV`
+- `.M00`
+- `.M01`
+- `.M02`
+- etc.
 
-Files are copied without renaming or modifying them.
+The complete recording is treated as one group.
+
+## Progress
+
+The command window shows:
+
+- Current file
+- File number
+- File percentage
+- Overall percentage
+- Bytes copied
+- Transfer speed
+- ETA
+
+Example:
+
+`File 3/12 | 64.2% | 8.4 GB / 13.1 GB | 92.5 MB/s | ETA 00:51`
+
+## Delete from card
+
+Disabled by default.
+
+Enable:
+
+`Delete files from card after successful verified import`
+
+Source files are deleted only after the copy has succeeded and verification has passed.
+
+For split MLV recordings, the entire group must succeed before any source files are deleted.
+
+A confirmation is shown when the importer starts.
 
 ## Verification
 
-Default:
+Recommended:
 
-```json
-"Method": "Size"
-```
+`Size`
 
-For stronger verification:
+For maximum verification:
 
-```json
-"Method": "SHA256"
-```
+`SHA256`
 
-SHA-256 is slower, especially with large MLV files.
+SHA256 is slower because the files must be read again.
+
+## Auto eject
+
+Optional.
+
+Enable `Eject card` in the GUI.
 
 ## Logs
 
-Import logs:
+Logs are stored in:
 
-```text
-logs\importer.log
-```
+`logs\importer.log`
 
-## Automatic startup
+## Start manually
 
-Press `Win + R`, enter:
+Run:
 
-```text
-shell:startup
-```
+`Config-GUI.cmd`
 
-Put a shortcut to `Start-MLV-Importer.cmd` there.
+or:
 
-That's it — insert an SD/CF card and the importer handles the rest.
+`powershell.exe -ExecutionPolicy Bypass -File MLV-Importer.ps1`
+
+## Stop
+
+Close the PowerShell window.
+
+Do not remove a card while a transfer is in progress.
