@@ -15,16 +15,16 @@ The folder structure should look like:
 
 ```text
 C:\MLVScripts\
-├── MLV-Importer\
+├── MagicDump\
 ├── RightClickMountFolder\
-└── ffmpeg_convert\
+└── SocialMediaRotate\
 ```
 
 Some tools also require additional software such as **FFmpeg**, **MLVFS**, or **Dokan**.
 
 ## Tools
 
-### `MLV-Importer`
+### `MagicDump`
 
 Automatically imports MLV and photo files from removable camera cards.
 
@@ -38,19 +38,13 @@ Automatically imports MLV and photo files from removable camera cards.
 Configure:
 
 ```text
-MLV-Importer/config.json
+MagicDump/Config.cmd
 ```
 
-Run once:
+Run:
 
 ```text
-Run-Once.cmd
-```
-
-Run continuously:
-
-```text
-Start-MLV-Importer.cmd
+MagicDump.cmd
 ```
 
 ---
