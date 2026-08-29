@@ -386,28 +386,48 @@ function Show-Notification {
 # ============================================================
 
 function Get-EligibleDrives {
+    # Get the configured MLVFS drive letter to ignore it
+    $IgnoredDriveLetter = [string](Get-ConfigValue (Get-ConfigValue $Config "MLVFS" $null) "DriveLetter" "Z:\")
+    $IgnoredDriveLetter = $IgnoredDriveLetter.Substring(0, 1).ToUpperInvariant()
+
     $Drives = @(
         Get-CimInstance Win32_LogicalDisk |
             Where-Object {
-                -not [string]::IsNullOrWhiteSpace($_.DeviceID)
+                -not [string]::IsNullOrWhiteSpace($_.DeviceID) -and
+                $_.DeviceID.Substring(0, 1).ToUpperInvariant() -ne $IgnoredDriveLetter
             }
     )
 
     if ($OnlyRemovable) {
-        return @(
+        $Eligible = @(
             $Drives |
                 Where-Object {
                     $_.DriveType -eq 2
                 }
         )
     }
+    else {
+        $Eligible = @(
+            $Drives |
+                Where-Object {
+                    $_.DriveType -in @(2, 3)
+                }
+        )
+    }
 
-    return @(
-        $Drives |
-            Where-Object {
-                $_.DriveType -in @(2, 3)
+    # Filter further to ensure the drive actually contains a DCIM folder
+    $CameraDrives = @(
+        foreach ($Drive in $Eligible) {
+            $Root = $Drive.DeviceID + "\"
+            $DcimPath = Join-Path $Root "DCIM"
+            
+            if (Test-Path -LiteralPath $DcimPath -PathType Container) {
+                $Drive
             }
+        }
     )
+
+    return $CameraDrives
 }
 
 # ============================================================
