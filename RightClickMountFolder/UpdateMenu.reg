@@ -1,0 +1,49 @@
+Windows Registry Editor Version 5.00
+
+; --- Right-click folder: Mount Standard ---
+[HKEY_CLASSES_ROOT\Directory\shell\MLV_Mount]
+@="MLVFS Mount"
+"Icon"="C:\\Windows\\System32\\shell32.dll,203"
+
+[HKEY_CLASSES_ROOT\Directory\shell\MLV_Mount\command]
+@="\"C:\\MLVFS\\RightClickMountFolder\\MLV_Controller.bat\" \"mount\" \"%1\""
+
+; --- Right-click folder: Mount Dual ISO ---
+[HKEY_CLASSES_ROOT\Directory\shell\MLV_Mount_Dual]
+@="MLVFS Mount Dual ISO"
+"Icon"="C:\\Windows\\System32\\shell32.dll,203"
+
+[HKEY_CLASSES_ROOT\Directory\shell\MLV_Mount_Dual\command]
+@="\"C:\\MLVFS\\RightClickMountFolder\\MLV_Controller.bat\" \"mount-dual\" \"%1\""
+
+; --- Background: Mount Standard ---
+[HKEY_CLASSES_ROOT\Directory\Background\shell\MLV_Mount]
+@="MLVFS Mount"
+"Icon"="C:\\Windows\\System32\\shell32.dll,203"
+
+[HKEY_CLASSES_ROOT\Directory\Background\shell\MLV_Mount\command]
+@="\"C:\\MLVFS\\RightClickMountFolder\\MLV_Controller.bat\" \"mount\" \"%V\""
+
+; --- Background: Mount Dual ISO ---
+[HKEY_CLASSES_ROOT\Directory\Background\shell\MLV_Mount_Dual]
+@="MLVFS Mount Dual ISO"
+"Icon"="C:\\Windows\\System32\\shell32.dll,203"
+
+[HKEY_CLASSES_ROOT\Directory\Background\shell\MLV_Mount_Dual\command]
+@="\"C:\\MLVFS\\RightClickMountFolder\\MLV_Controller.bat\" \"mount-dual\" \"%V\""
+
+; --- Unmount for Folders ---
+[HKEY_CLASSES_ROOT\Directory\shell\MLV_Unmount]
+@="MLVFS Unmount"
+"Icon"="C:\\Windows\\System32\\shell32.dll,203"
+
+[HKEY_CLASSES_ROOT\Directory\shell\MLV_Unmount\command]
+@="\"C:\\MLVFS\\RightClickMountFolder\\MLV_Controller.bat\" \"unmount\""
+
+; --- Unmount for Background ---
+[HKEY_CLASSES_ROOT\Directory\Background\shell\MLV_Unmount]
+@="MLVFS Unmount"
+"Icon"="C:\\Windows\\System32\\shell32.dll,203"
+
+[HKEY_CLASSES_ROOT\Directory\Background\shell\MLV_Unmount\command]
+@="\"C:\\MLVFS\\RightClickMountFolder\\MLV_Controller.bat\" \"unmount\""
