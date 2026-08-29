@@ -2,70 +2,70 @@ Windows Registry Editor Version 5.00
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.mov\shell\ConvertWithFFmpeg]
 @="Rotate and add 16:9 with FFmpeg"
-"Icon"="C:\\MLVFS\\ffmpeg_convert\\ffmpeg.exe"
+"Icon"="C:\\MLVScripts\\ffmpeg_convert\\ffmpeg.exe"
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.mov\shell\ConvertWithFFmpeg\command]
-@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVFS\\ffmpeg_convert\\convert-video.ps1\" \"%1\""
+@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVScripts\\ffmpeg_convert\\convert-video.ps1\" \"%1\""
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.mp4\shell\ConvertWithFFmpeg]
 @="Rotate and add 16:9 with FFmpeg"
-"Icon"="C:\\MLVFS\\ffmpeg_convert\\ffmpeg.exe"
+"Icon"="C:\\MLVScripts\\ffmpeg_convert\\ffmpeg.exe"
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.mp4\shell\ConvertWithFFmpeg\command]
-@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVFS\\ffmpeg_convert\\convert-video.ps1\" \"%1\""
+@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVScripts\\ffmpeg_convert\\convert-video.ps1\" \"%1\""
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.mkv\shell\ConvertWithFFmpeg]
 @="Rotate and add 16:9 with FFmpeg"
-"Icon"="C:\\MLVFS\\ffmpeg_convert\\ffmpeg.exe"
+"Icon"="C:\\MLVScripts\\ffmpeg_convert\\ffmpeg.exe"
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.mkv\shell\ConvertWithFFmpeg\command]
-@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVFS\\ffmpeg_convert\\convert-video.ps1\" \"%1\""
+@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVScripts\\ffmpeg_convert\\convert-video.ps1\" \"%1\""
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.avi\shell\ConvertWithFFmpeg]
 @="Rotate and add 16:9 with FFmpeg"
-"Icon"="C:\\MLVFS\\ffmpeg_convert\\ffmpeg.exe"
+"Icon"="C:\\MLVScripts\\ffmpeg_convert\\ffmpeg.exe"
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.avi\shell\ConvertWithFFmpeg\command]
-@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVFS\\ffmpeg_convert\\convert-video.ps1\" \"%1\""
+@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVScripts\\ffmpeg_convert\\convert-video.ps1\" \"%1\""
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.wmv\shell\ConvertWithFFmpeg]
 @="Rotate and add 16:9 with FFmpeg"
-"Icon"="C:\\MLVFS\\ffmpeg_convert\\ffmpeg.exe"
+"Icon"="C:\\MLVScripts\\ffmpeg_convert\\ffmpeg.exe"
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.wmv\shell\ConvertWithFFmpeg\command]
-@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVFS\\ffmpeg_convert\\convert-video.ps1\" \"%1\""
+@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVScripts\\ffmpeg_convert\\convert-video.ps1\" \"%1\""
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.m4v\shell\ConvertWithFFmpeg]
 @="Rotate and add 16:9 with FFmpeg"
-"Icon"="C:\\MLVFS\\ffmpeg_convert\\ffmpeg.exe"
+"Icon"="C:\\MLVScripts\\ffmpeg_convert\\ffmpeg.exe"
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.m4v\shell\ConvertWithFFmpeg\command]
-@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVFS\\ffmpeg_convert\\convert-video.ps1\" \"%1\""
+@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVScripts\\ffmpeg_convert\\convert-video.ps1\" \"%1\""
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.webm\shell\ConvertWithFFmpeg]
 @="Rotate and add 16:9 with FFmpeg"
-"Icon"="C:\\MLVFS\\ffmpeg_convert\\ffmpeg.exe"
+"Icon"="C:\\MLVScripts\\ffmpeg_convert\\ffmpeg.exe"
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.webm\shell\ConvertWithFFmpeg\command]
-@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVFS\\ffmpeg_convert\\convert-video.ps1\" \"%1\""
+@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVScripts\\ffmpeg_convert\\convert-video.ps1\" \"%1\""
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.mts\shell\ConvertWithFFmpeg]
 @="Rotate and add 16:9 with FFmpeg"
-"Icon"="C:\\MLVFS\\ffmpeg_convert\\ffmpeg.exe"
+"Icon"="C:\\MLVScripts\\ffmpeg_convert\\ffmpeg.exe"
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.mts\shell\ConvertWithFFmpeg\command]
-@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVFS\\ffmpeg_convert\\convert-video.ps1\" \"%1\""
+@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVScripts\\ffmpeg_convert\\convert-video.ps1\" \"%1\""
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.m2ts\shell\ConvertWithFFmpeg]
 @="Rotate and add 16:9 with FFmpeg"
-"Icon"="C:\\MLVFS\\ffmpeg_convert\\ffmpeg.exe"
+"Icon"="C:\\MLVScripts\\ffmpeg_convert\\ffmpeg.exe"
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.m2ts\shell\ConvertWithFFmpeg\command]
-@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVFS\\ffmpeg_convert\\convert-video.ps1\" \"%1\""
+@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVScripts\\ffmpeg_convert\\convert-video.ps1\" \"%1\""
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.ts\shell\ConvertWithFFmpeg]
 @="Rotate and add 16:9 with FFmpeg"
-"Icon"="C:\\MLVFS\\ffmpeg_convert\\ffmpeg.exe"
+"Icon"="C:\\MLVScripts\\ffmpeg_convert\\ffmpeg.exe"
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.ts\shell\ConvertWithFFmpeg\command]
-@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVFS\\ffmpeg_convert\\convert-video.ps1\" \"%1\""
+@="powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\MLVScripts\\ffmpeg_convert\\convert-video.ps1\" \"%1\""

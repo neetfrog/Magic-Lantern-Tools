@@ -4,4 +4,4 @@ Windows Registry Editor Version 5.00
 @="Add White Borders"
 
 [HKEY_CLASSES_ROOT\Directory\shell\AddWhiteBorders\command]
-@="powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File \"C:\\MLVFS\\AddBorders\\AddBorders.ps1\" -FolderFolderPath \"%V\""
+@="powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File \"C:\\MLVScripts\\AddBorders\\AddBorders.ps1\" -FolderFolderPath \"%V\""
