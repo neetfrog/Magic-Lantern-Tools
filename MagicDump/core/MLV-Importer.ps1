@@ -387,15 +387,22 @@ function Show-Notification {
 
 function Get-EligibleDrives {
     $IgnoredDriveLetter = [string](Get-ConfigValue (Get-ConfigValue $Config "MLVFS" $null) "DriveLetter" "Z:\")
-    $IgnoredDriveLetter = $IgnoredDriveLetter.Substring(0, 1).ToUpperInvariant()
+    if ($IgnoredDriveLetter.Length -ge 1) {
+        $IgnoredDriveLetter = $IgnoredDriveLetter.Substring(0, 1).ToUpperInvariant()
+    }
 
-    $Drives = @(
-        Get-CimInstance Win32_LogicalDisk |
-            Where-Object {
-                -not [string]::IsNullOrWhiteSpace($_.DeviceID) -and
-                $_.DeviceID.Substring(0, 1).ToUpperInvariant() -ne $IgnoredDriveLetter
-            }
-    )
+    try {
+        $Drives = @(
+            Get-CimInstance Win32_LogicalDisk -ErrorAction Stop |
+                Where-Object {
+                    -not [string]::IsNullOrWhiteSpace($_.DeviceID) -and
+                    $_.DeviceID.Substring(0, 1).ToUpperInvariant() -ne $IgnoredDriveLetter
+                }
+        )
+    }
+    catch {
+        return @()
+    }
 
     if ($OnlyRemovable) {
         $Eligible = @(
@@ -417,6 +424,11 @@ function Get-EligibleDrives {
     $CameraDrives = @(
         foreach ($Drive in $Eligible) {
             $Root = $Drive.DeviceID + "\"
+            
+            if (-not (Test-Path -LiteralPath $Root)) {
+                continue
+            }
+
             $DcimPath = Join-Path $Root "DCIM"
             
             if (Test-Path -LiteralPath $DcimPath -PathType Container) {
@@ -449,7 +461,7 @@ function Get-FileType {
 
     if (
         $MLVChunkEnabled -and
-        $Extension -match '^\.M[0-9]{2}$'
+        $Extension -match '^\.M[0-9]+$'
     ) {
         return "MLVChunk"
     }
@@ -804,7 +816,6 @@ function Copy-SafeFile {
                     Out-Null
             }
 
-            # High-performance stream copy with live speed & ETA metrics
             $SourceStream = New-Object System.IO.FileStream($SourceFile.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
             $DestStream = New-Object System.IO.FileStream($TempPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write)
             
@@ -843,7 +854,7 @@ function Copy-SafeFile {
                 $SourceStream.Dispose()
                 $DestStream.Dispose()
                 $Stopwatch.Stop()
-                Write-Host "" # Clear out progress line carriage return
+                Write-Host ""
             }
 
             if (-not (Test-Copy `
@@ -940,7 +951,7 @@ function Get-MLVGroups {
         $File = $Item.File
         $Extension = $File.Extension.ToUpperInvariant()
 
-        if ($Extension -match '^\.M[0-9]{2}$') {
+        if ($Extension -match '^\.M[0-9]+$') {
 
             $BaseName = [System.IO.Path]::GetFileNameWithoutExtension(
                 $File.Name
@@ -970,9 +981,7 @@ function Get-MLVGroups {
                     }
 
                     try {
-                        return [int](
-                            $Extension.Substring(2)
-                        )
+                        return [int]($Extension -replace '^\.M', '')
                     }
                     catch {
                         return 999999
@@ -982,6 +991,58 @@ function Get-MLVGroups {
     }
 
     return $Groups
+}
+
+# ============================================================
+# MANIFEST WRITER
+# ============================================================
+
+function Write-ImportManifest {
+    param(
+        [string]$DriveRoot,
+        [array]$WorkItems,
+        [bool]$Success
+    )
+
+    if (-not $ManifestEnabled) {
+        return
+    }
+
+    try {
+        $Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+        $DriveName = $DriveRoot -replace '[:\\]', ''
+        $ManifestFileName = "manifest_{0}_{1}.json" -f $DriveName, $Timestamp
+        $ManifestFilePath = Join-Path $ManifestDirectory $ManifestFileName
+
+        $ManifestData = [PSCustomObject]@{
+            Timestamp  = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+            DriveRoot  = $DriveRoot
+            Success    = $Success
+            WorkItems  = @(
+                foreach ($Work in $WorkItems) {
+                    [PSCustomObject]@{
+                        Type  = $Work.Type
+                        Files = @(
+                            foreach ($Item in $Work.Group) {
+                                [PSCustomObject]@{
+                                    Source      = $Item.File.FullName
+                                    Destination = (Get-DestinationPath $Item.File $(if ($Item.Type -eq "Photo") { "Photo" } else { "MLV" }))
+                                    Size        = $Item.File.Length
+                                    FileType    = $Item.Type
+                                }
+                            }
+                        )
+                    }
+                }
+            )
+        }
+
+        $ManifestData | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $ManifestFilePath -Encoding UTF8
+        Write-Log "Manifest saved: $ManifestFilePath"
+    }
+    catch {
+        Write-Log "Failed to write manifest: $($_.Exception.Message)" "ERROR"
+    }
 }
 
 # ============================================================
@@ -1201,6 +1262,7 @@ function Import-Card {
     foreach ($Work in @($WorkItems)) {
 
         $GroupSuccess = $true
+        $SuccessfullyCopiedInGroup = New-Object System.Collections.ArrayList
 
         foreach ($Item in @($Work.Group)) {
 
@@ -1235,10 +1297,21 @@ function Import-Card {
 
             if ($Success) {
                 $SuccessfulFiles++
+                [void]$SuccessfullyCopiedInGroup.Add($Destination)
             }
             else {
                 $FailedFiles++
                 $GroupSuccess = $false
+            }
+        }
+
+        if (-not $GroupSuccess) {
+            # Clean up partial destination copies for this failed work item/group
+            foreach ($CopiedDest in $SuccessfullyCopiedInGroup) {
+                if (Test-Path -LiteralPath $CopiedDest) {
+                    Write-Host "Cleaning up partial destination file: $CopiedDest" -ForegroundColor Yellow
+                    Remove-Item -LiteralPath $CopiedDest -Force -ErrorAction SilentlyContinue
+                }
             }
         }
 
@@ -1274,8 +1347,11 @@ function Import-Card {
         }
     }
 
+    $OverallSuccess = ($FailedFiles -eq 0)
+    Write-ImportManifest -DriveRoot $DriveRoot -WorkItems $WorkItems -Success $OverallSuccess
+
     $MLVFSEnabled = [bool](Get-ConfigValue $MLVFS "Enabled" $false)
-    if ($MLVFSEnabled -and $FailedFiles -eq 0 -and $MLVFiles.Count -gt 0) {
+    if ($MLVFSEnabled -and $OverallSuccess -and $MLVFiles.Count -gt 0) {
         $ControllerPath = [string](Get-ConfigValue $MLVFS "ControllerPath" "")
         if (Test-Path -LiteralPath $ControllerPath) {
             
@@ -1307,7 +1383,7 @@ function Import-Card {
     Write-Host "============================================================" `
         -ForegroundColor DarkGray
 
-    if ($FailedFiles -eq 0) {
+    if ($OverallSuccess) {
         Write-Host `
             " IMPORT COMPLETE" `
             -ForegroundColor Green
@@ -1330,7 +1406,7 @@ function Import-Card {
     Write-Log `
         "Card complete. Successful: $SuccessfulFiles | Failed: $FailedFiles"
 
-    return ($FailedFiles -eq 0)
+    return $OverallSuccess
 }
 
 # ============================================================
