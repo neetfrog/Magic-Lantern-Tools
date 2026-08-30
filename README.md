@@ -21,6 +21,18 @@ C:\MLVScripts\
 └── SocialMediaRotate\
 ```
 
+## Typical Workflow
+
+```text
+Camera Card
+    ↓
+MagicDump
+    ↓
+MLVFS 
+    ↓
+Davinci Resolve
+```
+
 Some tools also require additional software such as **FFmpeg** or **Dokan**.
 
 ## Tools
@@ -254,14 +266,4 @@ If you want to use an Android phone with a cheap HDMI capture card I find that b
 
 Magic Lantern community & Dokan Project 
 
-## Typical Workflow
 
-```text
-Camera Card
-    ↓
-MagicDump
-    ↓
-MLVFS
-    ↓
-Davinci Resolve
-```
