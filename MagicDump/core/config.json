@@ -5,7 +5,7 @@
                          "MLV":  "C:\\MagicDump\\MLVs"
                      },
     "Organization":  {
-                         "Mode":  "ByDate",
+                         "Mode":  "Flat",
                          "AvailableModes":  [
                                                 "ByDate",
                                                 "Flat"
