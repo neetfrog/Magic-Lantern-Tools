@@ -1,7 +1,7 @@
 ﻿{
     "Version":  4,
     "Destinations":  {
-                         "Photos":  "C:\\MagicDump\\Photos",
+                         "Photos":  "C:\\!MagicDump\\Photos",
                          "MLV":  "C:\\MagicDump\\MLVs"
                      },
     "Organization":  {
@@ -44,13 +44,13 @@
     "Copy":  {
                  "SkipExistingSameSize":  true,
                  "ReplaceDifferentSize":  false,
-                 "UseTemporaryFiles":  true,
+                 "UseTemporaryFiles":  false,
                  "TemporaryExtension":  ".importing",
                  "Retries":  3,
                  "RetryDelaySeconds":  3
              },
     "Verification":  {
-                         "Enabled":  true,
+                         "Enabled":  false,
                          "Method":  "Size",
                          "AvailableMethods":  [
                                                   "None",
@@ -59,24 +59,24 @@
                                               ]
                      },
     "Stability":  {
-                      "Enabled":  true,
-                      "Checks":  2,
-                      "DelaySeconds":  2
+                      "Enabled":  false,
+                      "Checks":  1,
+                      "DelaySeconds":  1
                   },
     "Monitoring":  {
-                       "PollIntervalSeconds":  2,
-                       "MountSettleSeconds":  3
+                       "PollIntervalSeconds":  1,
+                       "MountSettleSeconds":  1
                    },
     "Card":  {
                  "OnlyRemovableDrives":  true,
-                 "AutoEject":  false,
+                 "AutoEject":  true,
                  "EjectDelaySeconds":  2,
                  "DeleteSourceAfterImport":  false,
-                 "RequireDeleteConfirmation":  false
+                 "RequireDeleteConfirmation":  true
              },
     "Safety":  {
                    "DryRun":  false,
-                   "NeverDeleteUnlessVerified":  true,
+                   "NeverDeleteUnlessVerified":  false,
                    "NeverMoveSource":  true
                },
     "Manifest":  {
@@ -101,7 +101,7 @@
                   "DriveLetter":  "Z:\\"
               },
     "MLVApp":  {
-                   "Enabled":  true,
+                   "Enabled":  false,
                    "ExecutablePath":  "C:\\MLVScripts\\MLVApp\\MLVApp.exe"
                }
 }
