@@ -41,14 +41,14 @@ function Add-Field {
     $Label = New-Object System.Windows.Forms.Label
     $Label.Text = $Text
     $Label.Location = New-Object System.Drawing.Point(15, $CurrentY)
-    $Label.Size = New-Object System.Drawing.Size(220, 20)
+    $Label.Size = New-Object System.Drawing.Size(200, 20)
     $Tab.Controls.Add($Label)
 
     if ($Type -eq "Check") {
         $Control = New-Object System.Windows.Forms.CheckBox
         $Control.Checked = [bool]$InitialValue
-        $Control.Location = New-Object System.Drawing.Point(245, $CurrentY)
-        $Control.Size = New-Object System.Drawing.Size(240, 20)
+        $Control.Location = New-Object System.Drawing.Point(225, $CurrentY)
+        $Control.Size = New-Object System.Drawing.Size(260, 20)
         $Tab.Controls.Add($Control)
         $YRef.Value = $CurrentY + 32
         return $Control
@@ -56,8 +56,8 @@ function Add-Field {
     elseif ($Type -eq "Combo") {
         $Control = New-Object System.Windows.Forms.ComboBox
         $Control.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
-        $Control.Location = New-Object System.Drawing.Point(245, ($CurrentY - 3))
-        $Control.Size = New-Object System.Drawing.Size(240, 21)
+        $Control.Location = New-Object System.Drawing.Point(225, ($CurrentY - 3))
+        $Control.Size = New-Object System.Drawing.Size(260, 21)
         if ($null -ne $Options) {
             foreach ($Opt in $Options) { [void]$Control.Items.Add($Opt) }
         }
@@ -66,11 +66,36 @@ function Add-Field {
         $YRef.Value = $CurrentY + 32
         return $Control
     }
+    elseif ($Type -eq "Browse") {
+        $Control = New-Object System.Windows.Forms.TextBox
+        $Control.Text = [string]$InitialValue
+        $Control.Location = New-Object System.Drawing.Point(225, ($CurrentY - 3))
+        $Control.Size = New-Object System.Drawing.Size(195, 20)
+        $Tab.Controls.Add($Control)
+
+        $BtnBrowse = New-Object System.Windows.Forms.Button
+        $BtnBrowse.Text = "Browse..."
+        $BtnBrowse.Location = New-Object System.Drawing.Point(425, ($CurrentY - 4))
+        $BtnBrowse.Size = New-Object System.Drawing.Size(65, 23)
+        
+        $script:ActiveTextBox = $Control
+        $BtnBrowse.Add_Click({
+            $Browser = New-Object System.Windows.Forms.FolderBrowserDialog
+            $Browser.Description = "Select Folder"
+            if ($Browser.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+                $script:ActiveTextBox.Text = $Browser.SelectedPath
+            }
+        })
+        $Tab.Controls.Add($BtnBrowse)
+
+        $YRef.Value = $CurrentY + 32
+        return $Control
+    }
     else {
         $Control = New-Object System.Windows.Forms.TextBox
         $Control.Text = [string]$InitialValue
-        $Control.Location = New-Object System.Drawing.Point(245, ($CurrentY - 3))
-        $Control.Size = New-Object System.Drawing.Size(240, 20)
+        $Control.Location = New-Object System.Drawing.Point(225, ($CurrentY - 3))
+        $Control.Size = New-Object System.Drawing.Size(260, 20)
         $Tab.Controls.Add($Control)
         $YRef.Value = $CurrentY + 32
         return $Control
@@ -80,8 +105,8 @@ function Add-Field {
 # --- TAB 1: Destinations & Organization ---
 $Tab1 = New-Tab "Destinations"
 $Y1 = [ref][int]20
-$TxtPhotos = Add-Field $Tab1 "Photos Destination:" $Config.Destinations.Photos $Y1
-$TxtMLV = Add-Field $Tab1 "MLV Destination:" $Config.Destinations.MLV $Y1
+$TxtPhotos = Add-Field $Tab1 "Photos Destination:" $Config.Destinations.Photos $Y1 "Browse"
+$TxtMLV = Add-Field $Tab1 "MLV Destination:" $Config.Destinations.MLV $Y1 "Browse"
 $InitialPhotoMode = if ($Config.Organization.PhotoMode) { $Config.Organization.PhotoMode } else { $Config.Organization.Mode }
 $InitialMLVMode = if ($Config.Organization.MLVMode) { $Config.Organization.MLVMode } else { "Flat" }
 $CmbPhotoMode = Add-Field $Tab1 "Photo Organization Mode:" $InitialPhotoMode $Y1 "Combo" $Config.Organization.AvailableModes
@@ -139,52 +164,58 @@ $BtnSave.Text = "Save All Settings"
 $BtnSave.Location = New-Object System.Drawing.Point(210, 465)
 $BtnSave.Size = New-Object System.Drawing.Size(130, 35)
 $BtnSave.Add_Click({
-    # Destinations & Org
+    if ($null -eq $Config.Destinations) { $Config | Add-Member -MemberType NoteProperty -Name "Destinations" -Value ([PSCustomObject]@{}) -Force }
     $Config.Destinations.Photos = $TxtPhotos.Text
     $Config.Destinations.MLV = $TxtMLV.Text
+    if ($null -eq $Config.Organization) { $Config | Add-Member -MemberType NoteProperty -Name "Organization" -Value ([PSCustomObject]@{}) -Force }
     $Config.Organization.PhotoMode = $CmbPhotoMode.SelectedItem
     $Config.Organization.MLVMode = $CmbMLVMode.SelectedItem
     $Config.Organization.DateFormat = $TxtDateFormat.Text
 
-    # Card & Safety
+    if ($null -eq $Config.Card) { $Config | Add-Member -MemberType NoteProperty -Name "Card" -Value ([PSCustomObject]@{}) -Force }
     $Config.Card.OnlyRemovableDrives = $ChkOnlyRemovable.Checked
     $Config.Card.AutoEject = $ChkAutoEject.Checked
     $Config.Card.DeleteSourceAfterImport = $ChkDeleteSource.Checked
     $Config.Card.RequireDeleteConfirmation = $ChkRequireDelConf.Checked
+    if ($null -eq $Config.Safety) { $Config | Add-Member -MemberType NoteProperty -Name "Safety" -Value ([PSCustomObject]@{}) -Force }
     $Config.Safety.DryRun = $ChkDryRun.Checked
     $Config.Safety.NeverDeleteUnlessVerified = $ChkNeverDelUnver.Checked
     $Config.Safety.NeverMoveSource = $ChkNeverMove.Checked
 
-    # Copy & Verification
+    if ($null -eq $Config.Copy) { $Config | Add-Member -MemberType NoteProperty -Name "Copy" -Value ([PSCustomObject]@{}) -Force }
     $Config.Copy.SkipExistingSameSize = $ChkSkipExist.Checked
     $Config.Copy.ReplaceDifferentSize = $ChkReplaceDiff.Checked
     $Config.Copy.UseTemporaryFiles = $ChkUseTemp.Checked
     $Config.Copy.Retries = [int]$TxtRetries.Text
     $Config.Copy.RetryDelaySeconds = [int]$TxtRetryDelay.Text
+    if ($null -eq $Config.Verification) { $Config | Add-Member -MemberType NoteProperty -Name "Verification" -Value ([PSCustomObject]@{}) -Force }
     $Config.Verification.Enabled = $ChkVerEnabled.Checked
     $Config.Verification.Method = $CmbVerMethod.SelectedItem
 
-    # Scanning, Stability & Monitoring
+    if ($null -eq $Config.Scanning) { $Config | Add-Member -MemberType NoteProperty -Name "Scanning" -Value ([PSCustomObject]@{}) -Force }
     $Config.Scanning.ScanSubfolders = $ChkScanSub.Checked
     $Config.Scanning.MinimumCameraFiles = [int]$TxtMinFiles.Text
+    if ($null -eq $Config.Stability) { $Config | Add-Member -MemberType NoteProperty -Name "Stability" -Value ([PSCustomObject]@{}) -Force }
     $Config.Stability.Enabled = $ChkStabEnabled.Checked
     $Config.Stability.Checks = [int]$TxtStabChecks.Text
     $Config.Stability.DelaySeconds = [int]$TxtStabDelay.Text
+    if ($null -eq $Config.Monitoring) { $Config | Add-Member -MemberType NoteProperty -Name "Monitoring" -Value ([PSCustomObject]@{}) -Force }
     $Config.Monitoring.PollIntervalSeconds = [int]$TxtPollInterval.Text
     $Config.Monitoring.MountSettleSeconds = [int]$TxtMountSettle.Text
 
-    # Advanced & MLVFS
+    if ($null -eq $Config.Manifest) { $Config | Add-Member -MemberType NoteProperty -Name "Manifest" -Value ([PSCustomObject]@{}) -Force }
     $Config.Manifest.Enabled = $ChkManifest.Checked
     $Config.Manifest.Directory = $TxtManifestDir.Text
+    if ($null -eq $Config.Logging) { $Config | Add-Member -MemberType NoteProperty -Name "Logging" -Value ([PSCustomObject]@{}) -Force }
     $Config.Logging.Enabled = $ChkLogging.Checked
     $Config.Logging.Directory = $TxtLogDir.Text
     $Config.Logging.FileName = $TxtLogFile.Text
+    if ($null -eq $Config.MLVFS) { $Config | Add-Member -MemberType NoteProperty -Name "MLVFS" -Value ([PSCustomObject]@{}) -Force }
     $Config.MLVFS.Enabled = $ChkMLVFS.Checked
     $Config.MLVFS.ControllerPath = $TxtControllerPath.Text
     $Config.MLVFS.DriveLetter = $TxtDriveLetter.Text
 
-    # Save to JSON preserving deep structure
-    $Config | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $ConfigPath -Encoding UTF8
+    $Config | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $configPath -Encoding UTF8
     [System.Windows.Forms.MessageBox]::Show("All configuration settings saved successfully!", "Success", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
     $Form.Close()
 })
