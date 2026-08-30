@@ -24,13 +24,13 @@ C:\MLVScripts\
 ## Typical Workflow
 
 ```text
-Camera Card
+Plug in the SD/CF card[s]
     ↓
-MagicDump
+MagicDump copies the files (automatic step)
     ↓
-MLVFS 
+MLVFS mounts the MLV directory (automatic step)
     ↓
-Davinci Resolve
+in Davinci Resolve media section import the files from the MLVFS disk (Z:)
 ```
 
 Some tools also require additional software such as **FFmpeg** or **Dokan**.
