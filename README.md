@@ -53,7 +53,7 @@ MagicDump.cmd
 
 ### `RightClickMountFolder`
 
-Mounts MLV folders as virtual drives using **MLVFS + Dokan**.
+Mounts MLV folders as virtual drives using **MLVFS + Dokan** with right-click option instead of having a user type commands into cmd.
 
 Supports:
 
