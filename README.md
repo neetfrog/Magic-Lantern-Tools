@@ -49,7 +49,7 @@ Run:
 ```text
 MagicDump.cmd
 ```
-![MagicDump](https://i.ibb.co/HfVcpZ0B/image.png)
+![MagicDump](https://i.ibb.co/mVxn1f7t/image.png)
 
 ---
 
