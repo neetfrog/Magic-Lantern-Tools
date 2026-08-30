@@ -1154,6 +1154,8 @@ function Import-Card {
     [int64]$TotalBytes = 0
     [int64]$PhotoBytes = 0
     [int64]$MLVBytes = 0
+    [int]$PhotoFilesCount = 0
+    [int]$MLVFilesCount = 0
 
     foreach ($Work in @($WorkItems)) {
         foreach ($Item in @($Work.Group)) {
@@ -1162,9 +1164,11 @@ function Import-Card {
             
             if ($Item.Type -eq "Photo") {
                 $PhotoBytes += $Length
+                $PhotoFilesCount++
             }
             else {
                 $MLVBytes += $Length
+                $MLVFilesCount++
             }
         }
     }
@@ -1178,8 +1182,8 @@ function Import-Card {
     Write-Host ""
     Write-Host "Files found: $TotalFiles" -ForegroundColor Cyan
     Write-Host "Total size:  $(Format-Bytes $TotalBytes)" -ForegroundColor Cyan
-    Write-Host " - Photos:   $(Format-Bytes $PhotoBytes)" -ForegroundColor Cyan
-    Write-Host " - MLVs:     $(Format-Bytes $MLVBytes)" -ForegroundColor Cyan
+    Write-Host " - Photos:   $PhotoFilesCount file(s) ($(Format-Bytes $PhotoBytes))" -ForegroundColor Cyan
+    Write-Host " - MLVs:     $MLVFilesCount file(s) ($(Format-Bytes $MLVBytes))" -ForegroundColor Cyan
 
     if ($DeleteSource) {
         Write-Host ""
@@ -1317,8 +1321,8 @@ function Import-Card {
     Write-Host " Successful files: $SuccessfulFiles"
     Write-Host " Failed files:     $FailedFiles"
     Write-Host " Total size:       $(Format-Bytes $TotalBytes)"
-    Write-Host "  - Photos:        $(Format-Bytes $PhotoBytes)"
-    Write-Host "  - MLVs:          $(Format-Bytes $MLVBytes)"
+    Write-Host "  - Photos:        $PhotoFilesCount file(s) ($(Format-Bytes $PhotoBytes))"
+    Write-Host "  - MLVs:          $MLVFilesCount file(s) ($(Format-Bytes $MLVBytes))"
 
     Write-Host "============================================================" `
         -ForegroundColor DarkGray
@@ -1426,7 +1430,7 @@ Write-Host ""
 Write-Host "============================================================" `
     -ForegroundColor Cyan
 
-Write-Host "          MagicDump" `
+Write-Host "          MAGIC LANTERN CAMERA IMPORTER" `
     -ForegroundColor Cyan
 
 Write-Host "============================================================" `
@@ -1460,7 +1464,7 @@ else {
 
 Write-Host ""
 
-Write-Log "MagicDump started."
+Write-Log "Magic Lantern Importer started."
 
 if ($DeleteSource) {
     if (-not (Confirm-DeleteMode)) {
@@ -1507,7 +1511,7 @@ while ($true) {
             Write-Log "Camera card detected: $Root"
 
             Show-Notification `
-                "MagicDump" `
+                "Magic Lantern Importer" `
                 "Camera card detected: $Root"
 
             if ($MountSettleSeconds -gt 0) {
@@ -1530,7 +1534,7 @@ while ($true) {
                     "Import completed successfully: $Root"
 
                 Show-Notification `
-                    "MagicDump" `
+                    "Magic Lantern Importer" `
                     "Import completed: $Root"
 
                 Eject-Drive $Root
@@ -1542,7 +1546,7 @@ while ($true) {
                     "ERROR"
 
                 Show-Notification `
-                    "MagicDump" `
+                    "Magic Lantern Importer" `
                     "Import finished with errors: $Root"
             }
         }
