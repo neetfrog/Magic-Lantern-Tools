@@ -16,6 +16,7 @@ The folder structure should look like:
 ```text
 C:\MLVScripts\
 ├── MagicDump\
+├── MLVFS\
 ├── RightClickMountFolder\
 └── SocialMediaRotate\
 ```
