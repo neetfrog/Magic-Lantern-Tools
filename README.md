@@ -135,7 +135,7 @@ RightClickMountFolder\MLV_Controller.bat
 ```
 
 
-# Command Line Mount
+# Command Line Mount (i suggest using the right click method though, it's much faster)
 
 Run **CMD as Administrator**:
 
