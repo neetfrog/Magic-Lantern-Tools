@@ -254,14 +254,6 @@ If you want to use an Android phone with a cheap HDMI capture card I find that b
 
 Magic Lantern community & Dokan Project 
 
-
-## Requirements
-
-* Windows
-* PowerShell
-* FFmpeg — for `SocialMediaRotate`
-* MLVFS + Dokan — for `RightClickMountFolder`
-
 ## Typical Workflow
 
 ```text
