@@ -21,7 +21,7 @@ C:\MLVScripts\
 └── SocialMediaRotate\
 ```
 
-Some tools also require additional software such as **FFmpeg**, **MLVFS**, or **Dokan**.
+Some tools also require additional software such as **FFmpeg** or **Dokan**.
 
 ## Tools
 
