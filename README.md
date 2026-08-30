@@ -35,8 +35,11 @@ Open Davinci Resolve media section and simply import the files from the MLVFS di
 ```
 
 Some tools also require additional software such as:
+
 **FFmpeg - https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip**
+
 **MLVApp - https://github.com/ilia3101/MLV-App** 
+
 **Dokan - included in this repository**
 
 ## Tools
