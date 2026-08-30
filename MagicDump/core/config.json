@@ -71,7 +71,7 @@
                  "OnlyRemovableDrives":  true,
                  "AutoEject":  false,
                  "EjectDelaySeconds":  2,
-                 "DeleteSourceAfterImport":  false,
+                 "DeleteSourceAfterImport":  true,
                  "RequireDeleteConfirmation":  true
              },
     "Safety":  {
