@@ -49,6 +49,7 @@ Run:
 ```text
 MagicDump.cmd
 ```
+![MagicDump](https://i.ibb.co/HfVcpZ0B/image.png)
 
 ---
 
