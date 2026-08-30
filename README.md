@@ -30,7 +30,7 @@ MagicDump copies the files (automatic step)
     ↓
 MLVFS mounts the MLV directory (automatic step)
     ↓
-in Davinci Resolve media section import the files from the MLVFS disk (Z:)
+Open Davinci Resolve media section and simply import the files from the MLVFS disk (Z:)
 ```
 
 Some tools also require additional software such as **FFmpeg** or **Dokan**.
