@@ -31,6 +31,7 @@ Automatically imports MLV and photo files from removable camera cards.
 
 * Detects removable drives
 * Copies MLV and photo files
+* Automatically mount copied MLVs using MLVFS (Dokan must be installed)
 * Configurable destinations
 * Optional file verification
 * Delete copied files from cards
