@@ -33,13 +33,14 @@ Automatically imports MLV and photo files from removable camera cards.
 * Copies MLV and photo files
 * Configurable destinations
 * Optional file verification
+* Delete copied files from cards
 * Logs and manifests
 * Dry-run mode
 
 Configure:
 
 ```text
-MagicDump/Config.cmd
+Config.cmd
 ```
 
 Run:
