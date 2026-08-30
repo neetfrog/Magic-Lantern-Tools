@@ -17,6 +17,7 @@ The folder structure should look like:
 C:\MLVScripts\
 ├── MagicDump\
 ├── MLVFS\
+├── MLVApp\ [it's needed if you want copied MLVs to automatically open in MLVApp]
 ├── RightClickMountFolder\
 └── SocialMediaRotate\
 ```
@@ -33,7 +34,7 @@ MLVFS mounts the MLV directory (automatic step)
 Open Davinci Resolve media section and simply import the files from the MLVFS disk (Z:)
 ```
 
-Some tools also require additional software such as **FFmpeg** or **Dokan**.
+Some tools also require additional software such as **FFmpeg**, **MLVApp** or **Dokan**.
 
 ## Tools
 
