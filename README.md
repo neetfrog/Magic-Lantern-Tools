@@ -34,7 +34,7 @@ MLVFS mounts the MLV directory (automatic step)
 Open Davinci Resolve media section and simply import the files from the MLVFS disk (Z:)
 ```
 
-Some tools also require additional software such as **FFmpeg**, **MLVApp** or **Dokan**.
+Some tools also require additional software such as **FFmpeg - https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip**, **MLVApp - https://github.com/ilia3101/MLV-App ** or **Dokan - included in this repository**.
 
 ## Tools
 
