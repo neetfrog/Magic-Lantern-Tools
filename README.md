@@ -5,7 +5,7 @@ A collection of Windows tools for working with **Magic Lantern / MLV footage**.
 ## Installation
 
 1. Download or clone this repository.
-2. Place the tool folders in:
+2. Place the downloaded files to:
 
 ```text
 C:\MLVScripts
