@@ -81,7 +81,7 @@ Example:
 .\convert-video.ps1 "C:\Videos\clip.mov"
 ```
 
-`install-context-menu.reg` adds the converter to Windows Explorer.
+`install-context-menu.reg` adds the right-click option to Windows Explorer for ease of use.
 
 # Magic Lantern MLVFS Windows Bundle
 
