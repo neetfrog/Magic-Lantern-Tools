@@ -386,7 +386,6 @@ function Show-Notification {
 # ============================================================
 
 function Get-EligibleDrives {
-    # Get the configured MLVFS drive letter to ignore it
     $IgnoredDriveLetter = [string](Get-ConfigValue (Get-ConfigValue $Config "MLVFS" $null) "DriveLetter" "Z:\")
     $IgnoredDriveLetter = $IgnoredDriveLetter.Substring(0, 1).ToUpperInvariant()
 
@@ -415,7 +414,6 @@ function Get-EligibleDrives {
         )
     }
 
-    # Filter further to ensure the drive actually contains a DCIM folder
     $CameraDrives = @(
         foreach ($Drive in $Eligible) {
             $Root = $Drive.DeviceID + "\"
@@ -694,7 +692,7 @@ function Test-Copy {
 }
 
 # ============================================================
-# COPY FILE (CLEAN / NO PROGRESS ANIMATION)
+# COPY FILE (WITH REAL-TIME PROGRESS, SPEED, AND ETA)
 # ============================================================
 
 function Copy-SafeFile {
@@ -806,11 +804,47 @@ function Copy-SafeFile {
                     Out-Null
             }
 
-            Copy-Item `
-                -LiteralPath $SourceFile.FullName `
-                -Destination $TempPath `
-                -Force `
-                -ErrorAction Stop
+            # High-performance stream copy with live speed & ETA metrics
+            $SourceStream = New-Object System.IO.FileStream($SourceFile.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
+            $DestStream = New-Object System.IO.FileStream($TempPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write)
+            
+            $BufferSize = 1MB
+            $Buffer = New-Object byte[] $BufferSize
+            $TotalLength = $SourceFile.Length
+            $CopiedBytes = 0
+            $Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+
+            try {
+                while (($ReadCount = $SourceStream.Read($Buffer, 0, $Buffer.Length)) -gt 0) {
+                    $DestStream.Write($Buffer, 0, $ReadCount)
+                    $CopiedBytes += $ReadCount
+
+                    $Elapsed = $Stopwatch.Elapsed.TotalSeconds
+                    if ($Elapsed -gt 0) {
+                        $Speed = $CopiedBytes / $Elapsed
+                        $Percent = [math]::Min(100, [math]::Round(($CopiedBytes / $TotalLength) * 100))
+                        $RemainingBytes = $TotalLength - $CopiedBytes
+                        $ETA = if ($Speed -gt 0) { [TimeSpan]::FromSeconds($RemainingBytes / $Speed) } else { [TimeSpan]::Zero }
+
+                        $SpeedText = if ($Speed -lt 1MB) { "{0:N2} KB/s" -f ($Speed / 1KB) } else { "{0:N2} MB/s" -f ($Speed / 1MB) }
+                        $ETAText = "{0:D2}:{1:D2}" -f $ETA.Minutes, $ETA.Seconds
+                        if ($ETA.Hours -gt 0) { $ETAText = "$($ETA.Hours):$ETAText" }
+
+                        $BarWidth = 15
+                        $Filled = [math]::Round(($CopiedBytes / $TotalLength) * $BarWidth)
+                        $Empty = $BarWidth - $Filled
+                        $Bar = "[" + ("=" * $Filled) + (" " * $Empty) + "]"
+
+                        Write-Host -NoNewline "`r  $Bar $Percent% | $SpeedText | ETA: $ETAText   "
+                    }
+                }
+            }
+            finally {
+                $SourceStream.Dispose()
+                $DestStream.Dispose()
+                $Stopwatch.Stop()
+                Write-Host "" # Clear out progress line carriage return
+            }
 
             if (-not (Test-Copy `
                 $SourceFile.FullName `
@@ -1236,16 +1270,14 @@ function Import-Card {
         }
     }
 
-# AFTER copy completes successfully, mount the destination folder using your controller batch script
     $MLVFSEnabled = [bool](Get-ConfigValue $MLVFS "Enabled" $false)
-    if ($MLVFSEnabled -and $FailedFiles -eq 0) {
+    if ($MLVFSEnabled -and $FailedFiles -eq 0 -and $MLVFiles.Count -gt 0) {
         $ControllerPath = [string](Get-ConfigValue $MLVFS "ControllerPath" "")
         if (Test-Path -LiteralPath $ControllerPath) {
             
-            # Determine correct mount path based on organization mode and imported MLV files
             $TargetMountPath = $MLVDestination
             if ($OrganizationMode -eq "ByDate") {
-                $LastMLVItem = @($MLVFiles | Select-Object -Last 1).File
+                $LastMLVItem = $MLVFiles[-1].File
                 if ($null -ne $LastMLVItem) {
                     $DateFolder = $LastMLVItem.LastWriteTime.ToString($DateFormat)
                     $TargetMountPath = Join-Path $MLVDestination $DateFolder
@@ -1394,7 +1426,7 @@ Write-Host ""
 Write-Host "============================================================" `
     -ForegroundColor Cyan
 
-Write-Host "          MAGIC LANTERN CAMERA IMPORTER" `
+Write-Host "          MagicDump" `
     -ForegroundColor Cyan
 
 Write-Host "============================================================" `
@@ -1428,7 +1460,7 @@ else {
 
 Write-Host ""
 
-Write-Log "Magic Lantern Importer started."
+Write-Log "MagicDump started."
 
 if ($DeleteSource) {
     if (-not (Confirm-DeleteMode)) {
@@ -1475,7 +1507,7 @@ while ($true) {
             Write-Log "Camera card detected: $Root"
 
             Show-Notification `
-                "Magic Lantern Importer" `
+                "MagicDump" `
                 "Camera card detected: $Root"
 
             if ($MountSettleSeconds -gt 0) {
@@ -1498,7 +1530,7 @@ while ($true) {
                     "Import completed successfully: $Root"
 
                 Show-Notification `
-                    "Magic Lantern Importer" `
+                    "MagicDump" `
                     "Import completed: $Root"
 
                 Eject-Drive $Root
@@ -1510,7 +1542,7 @@ while ($true) {
                     "ERROR"
 
                 Show-Notification `
-                    "Magic Lantern Importer" `
+                    "MagicDump" `
                     "Import finished with errors: $Root"
             }
         }

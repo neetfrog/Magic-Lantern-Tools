@@ -1,11 +1,11 @@
 @echo off
-title Magic Lantern MLV Importer
+title MagicDump
 
 cd /d "%~dp0"
 
 echo.
 echo ============================================================
-echo        Magic Lantern MLV Importer
+echo        MagicDump
 echo ============================================================
 echo.
 echo Starting...
