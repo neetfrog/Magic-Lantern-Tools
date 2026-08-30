@@ -3,7 +3,7 @@ param(
     [string]$InputFile
 )
 
-$ffmpeg = "C:\MLVFS\ffmpeg_convert\ffmpeg.exe"
+$ffmpeg = "C:\MLVScripts\SocialMediaRotate\ffmpeg.exe"
 
 if (-not (Test-Path $ffmpeg)) {
     Add-Type -AssemblyName PresentationFramework
