@@ -79,6 +79,7 @@ $Logging = Get-ConfigValue $Config "Logging" $null
 $Notifications = Get-ConfigValue $Config "Notifications" $null
 $Monitoring = Get-ConfigValue $Config "Monitoring" $null
 $MLVFS = Get-ConfigValue $Config "MLVFS" $null
+$MLVApp = Get-ConfigValue $Config "MLVApp" $null
 
 $PhotoDestination = [string](
     Get-ConfigValue $Destinations "Photos" "D:\Camera Import\Photos"
@@ -1393,7 +1394,7 @@ function Import-Card {
     $OverallSuccess = ($FailedFiles -eq 0)
     Write-ImportManifest -DriveRoot $DriveRoot -WorkItems $WorkItems -Success $OverallSuccess
 
-$MLVFSEnabled = [bool](Get-ConfigValue $MLVFS "Enabled" $false)
+    $MLVFSEnabled = [bool](Get-ConfigValue $MLVFS "Enabled" $false)
     if ($MLVFSEnabled -and $OverallSuccess -and $MLVFiles.Count -gt 0) {
         $ControllerPath = [string](Get-ConfigValue $MLVFS "ControllerPath" "")
         if (Test-Path -LiteralPath $ControllerPath) {
@@ -1411,6 +1412,86 @@ $MLVFSEnabled = [bool](Get-ConfigValue $MLVFS "Enabled" $false)
             catch {
                 Write-Log "Failed to mount MLV destination: $($_.Exception.Message)" "ERROR"
                 Write-Host "WARNING: Post-copy mount failed." -ForegroundColor Red
+            }
+        }
+    }
+
+$MLVAppEnabled = [bool](Get-ConfigValue $MLVApp "Enabled" $false)
+    if ($MLVAppEnabled -and $OverallSuccess -and $MLVFiles.Count -gt 0) {
+        $MLVAppPath = [string](Get-ConfigValue $MLVApp "ExecutablePath" "C:\MLVScripts\MLVApp\MLVApp.exe")
+        if (Test-Path -LiteralPath $MLVAppPath) {
+            Write-Host ""
+            Write-Host "Generating MLVApp session file for imported clips..." -ForegroundColor Yellow
+            Write-Log "Generating dynamic session file for MLVApp"
+
+            try {
+                $SessionItems = @()
+                foreach ($Work in @($WorkItems)) {
+                    if ($Work.Type -eq "MLVGroup") {
+                        foreach ($Item in $Work.Group) {
+                            if ($Item.File.Extension.ToUpperInvariant() -eq ".MLV") {
+                                $DestinationPath = Get-DestinationPath $Item.File "MLV"
+                                if (Test-Path -LiteralPath $DestinationPath) {
+                                    # Normalize path separators for MLVApp XML compatibility
+                                    $NormalizedPath = $DestinationPath -replace '\\', '/'
+                                    $SessionItems += $NormalizedPath
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if ($SessionItems.Count -gt 0) {
+                    $SessionFilePath = Join-Path $Env:TEMP "MagicDump_Session_$([DateTime]::Now.ToString('yyyyMMdd_HHmmss')).masxml"
+                    
+                    $XmlBuilder = New-Object System.Text.StringBuilder
+                    [void]$XmlBuilder.AppendLine('<?xml version="1.0" encoding="UTF-8"?>')
+                    [void]$XmlBuilder.AppendLine('<mlv_files version="4" mlvapp="1.16">')
+                    
+                    foreach ($Path in $SessionItems) {
+                        [void]$XmlBuilder.AppendLine("    <clip file=`"$Path`" relative=`"$Path`" mark=`"0`">")
+                        [void]$XmlBuilder.AppendLine("        <exposure>0</exposure>")
+                        [void]$XmlBuilder.AppendLine("        <contrast>0</contrast>")
+                        [void]$XmlBuilder.AppendLine("        <pivot>75</pivot>")
+                        [void]$XmlBuilder.AppendLine("        <temperature>-1</temperature>")
+                        [void]$XmlBuilder.AppendLine("        <tint>0</tint>")
+                        [void]$XmlBuilder.AppendLine("        <clarity>0</clarity>")
+                        [void]$XmlBuilder.AppendLine("        <vibrance>0</vibrance>")
+                        [void]$XmlBuilder.AppendLine("        <saturation>0</saturation>")
+                        [void]$XmlBuilder.AppendLine("        <ds>20</ds>")
+                        [void]$XmlBuilder.AppendLine("        <dr>70</dr>")
+                        [void]$XmlBuilder.AppendLine("        <ls>0</ls>")
+                        [void]$XmlBuilder.AppendLine("        <lr>50</lr>")
+                        [void]$XmlBuilder.AppendLine("        <lightening>0</lightening>")
+                        [void]$XmlBuilder.AppendLine("        <gradationCurve>1e-5;1e-5;1;1;?1e-5;1e-5;1;1;?1e-5;1e-5;1;1;?1e-5;1e-5;1;1;</gradationCurve>")
+                        [void]$XmlBuilder.AppendLine("        <hueVsHue>0;0;1;0;</hueVsHue>")
+                        [void]$XmlBuilder.AppendLine("        <hueVsSaturation>0;0;1;0;</hueVsSaturation>")
+                        [void]$XmlBuilder.AppendLine("        <hueVsLuminance>0;0;1;0;</hueVsLuminance>")
+                        [void]$XmlBuilder.AppendLine("        <lumaVsSaturation>0;0;1;0;</lumaVsSaturation>")
+                        [void]$XmlBuilder.AppendLine("        <shadows>0</shadows>")
+                        [void]$XmlBuilder.AppendLine("        <highlights>0</highlights>")
+                        [void]$XmlBuilder.AppendLine("        <sharpen>0</sharpen>")
+                        [void]$XmlBuilder.AppendLine("        <gamma>315</gamma>")
+                        [void]$XmlBuilder.AppendLine("        <allowCreativeAdjustments>1</allowCreativeAdjustments>")
+                        [void]$XmlBuilder.AppendLine("        <agx>1</agx>")
+                        [void]$XmlBuilder.AppendLine("        <rawFixesEnabled>1</rawFixesEnabled>")
+                        [void]$XmlBuilder.AppendLine("        <cutIn>1</cutIn>")
+                        [void]$XmlBuilder.AppendLine("        <cutOut>2147483647</cutOut>")
+                        [void]$XmlBuilder.AppendLine("        <debayer>5</debayer>")
+                        [void]$XmlBuilder.AppendLine("    </clip>")
+                    }
+                    
+                    [void]$XmlBuilder.AppendLine('</mlv_files>')
+                    
+                    Set-Content -LiteralPath $SessionFilePath -Value $XmlBuilder.ToString() -Encoding UTF8
+                    
+                    Start-Process -FilePath $MLVAppPath -ArgumentList "`"$SessionFilePath`""
+                    Write-Host "MLVApp launched successfully via session file." -ForegroundColor Green
+                }
+            }
+            catch {
+                Write-Log "Failed to launch MLVApp via session file: $($_.Exception.Message)" "ERROR"
+                Write-Host "WARNING: Failed to launch MLVApp session." -ForegroundColor Red
             }
         }
     }

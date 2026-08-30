@@ -71,8 +71,8 @@
                  "OnlyRemovableDrives":  true,
                  "AutoEject":  false,
                  "EjectDelaySeconds":  2,
-                 "DeleteSourceAfterImport":  true,
-                 "RequireDeleteConfirmation":  true
+                 "DeleteSourceAfterImport":  false,
+                 "RequireDeleteConfirmation":  false
              },
     "Safety":  {
                    "DryRun":  false,
@@ -99,5 +99,9 @@
                   "Enabled":  true,
                   "ControllerPath":  "C:\\MLVScripts\\RightClickMountFolder\\MLV_Controller.bat",
                   "DriveLetter":  "Z:\\"
-              }
+              },
+    "MLVApp":  {
+                   "Enabled":  true,
+                   "ExecutablePath":  "C:\\MLVScripts\\MLVApp\\MLVApp.exe"
+               }
 }

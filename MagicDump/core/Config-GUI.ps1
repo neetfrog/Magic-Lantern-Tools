@@ -157,6 +157,8 @@ $TxtLogFile = Add-Field $Tab5 "Log File Name:" $Config.Logging.FileName $Y5
 $ChkMLVFS = Add-Field $Tab5 "MLVFS Enabled:" $Config.MLVFS.Enabled $Y5 "Check"
 $TxtControllerPath = Add-Field $Tab5 "MLVFS Controller Path:" $Config.MLVFS.ControllerPath $Y5
 $TxtDriveLetter = Add-Field $Tab5 "MLVFS Drive Letter:" $Config.MLVFS.DriveLetter $Y5
+$ChkMLVApp = Add-Field $Tab5 "MLVApp Enabled:" $Config.MLVApp.Enabled $Y5 "Check"
+$TxtMLVAppPath = Add-Field $Tab5 "MLVApp Executable Path:" $Config.MLVApp.ExecutablePath $Y5
 
 # --- Save Button ---
 $BtnSave = New-Object System.Windows.Forms.Button
@@ -214,6 +216,10 @@ $BtnSave.Add_Click({
     $Config.MLVFS.Enabled = $ChkMLVFS.Checked
     $Config.MLVFS.ControllerPath = $TxtControllerPath.Text
     $Config.MLVFS.DriveLetter = $TxtDriveLetter.Text
+
+    if ($null -eq $Config.MLVApp) { $Config | Add-Member -MemberType NoteProperty -Name "MLVApp" -Value ([PSCustomObject]@{}) -Force }
+    $Config.MLVApp.Enabled = $ChkMLVApp.Checked
+    $Config.MLVApp.ExecutablePath = $TxtMLVAppPath.Text
 
     $Config | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $configPath -Encoding UTF8
     [System.Windows.Forms.MessageBox]::Show("All configuration settings saved successfully!", "Success", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
