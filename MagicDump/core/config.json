@@ -10,7 +10,9 @@
                                                 "ByDate",
                                                 "Flat"
                                             ],
-                         "DateFormat":  "yyyy-MM-dd"
+                         "DateFormat":  "yyyy-MM-dd",
+                         "MLVMode":  "ByDate",
+                         "PhotoMode":  "ByDate"
                      },
     "FileTypes":  {
                       "Photos":  [

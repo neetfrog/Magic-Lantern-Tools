@@ -92,6 +92,14 @@ $OrganizationMode = [string](
     Get-ConfigValue $Organization "Mode" "Flat"
 )
 
+$PhotoOrganizationMode = [string](
+    Get-ConfigValue $Organization "PhotoMode" $OrganizationMode
+)
+
+$MLVOrganizationMode = [string](
+    Get-ConfigValue $Organization "MLVMode" "Flat"
+)
+
 $DateFormat = [string](
     Get-ConfigValue $Organization "DateFormat" "yyyy-MM-dd"
 )
@@ -586,12 +594,14 @@ function Get-DestinationPath {
 
     if ($Type -eq "Photo") {
         $Root = $PhotoDestination
+        $CurrentMode = $PhotoOrganizationMode
     }
     else {
         $Root = $MLVDestination
+        $CurrentMode = $MLVOrganizationMode
     }
 
-    if ($OrganizationMode -eq "ByDate") {
+    if ($CurrentMode -eq "ByDate") {
 
         $DateFolder = $File.LastWriteTime.ToString($DateFormat)
 
@@ -949,7 +959,7 @@ function Get-MLVGroups {
     foreach ($Item in @($MLVFiles)) {
 
         $File = $Item.File
-        $Extension = $File.Extension.ToUpperInvariant()
+        $Extension = $Extension = $File.Extension.ToUpperInvariant()
 
         if ($Extension -match '^\.M[0-9]+$') {
 
@@ -1212,15 +1222,15 @@ function Import-Card {
         }
     }
 
-    [int64]$TotalBytes = 0
-    [int64]$PhotoBytes = 0
-    [int64]$MLVBytes = 0
+    [double]$TotalBytes = 0
+    [double]$PhotoBytes = 0
+    [double]$MLVBytes = 0
     [int]$PhotoFilesCount = 0
     [int]$MLVFilesCount = 0
 
     foreach ($Work in @($WorkItems)) {
         foreach ($Item in @($Work.Group)) {
-            $Length = [int64]$Item.File.Length
+            [double]$Length = [double]$Item.File.Length
             $TotalBytes += $Length
             
             if ($Item.Type -eq "Photo") {
@@ -1240,11 +1250,44 @@ function Import-Card {
         $TotalFiles += @($Work.Group).Count
     }
 
+    # ============================================================
+    # DISK SPACE PRE-CHECK & RETRIEVAL
+    # ============================================================
+    $TargetDriveRoot = [System.IO.Path]::GetPathRoot([string]$MLVDestination)
+    [double]$FreeSpace = 0
+    try {
+        $DriveInfo = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='$($TargetDriveRoot.TrimEnd('\'))'" -ErrorAction Stop
+        $FreeSpace = [double]$DriveInfo.FreeSpace
+
+        [double]$RequiredSpace = $TotalBytes + 1GB
+
+        if ($FreeSpace -lt $RequiredSpace) {
+            Write-Log "ABORT: Insufficient free space on $TargetDriveRoot. Required: $(Format-Bytes $RequiredSpace), Available: $(Format-Bytes $FreeSpace)" "ERROR"
+            
+            Write-Host ""
+            Write-Host "============================================================" -ForegroundColor DarkGray
+            Write-Host " IMPORT ABORTED: INSUFFICIENT DISK SPACE" -ForegroundColor Red
+            Write-Host " Target Drive: $TargetDriveRoot" -ForegroundColor Yellow
+            Write-Host " Required:     $(Format-Bytes $RequiredSpace) (including buffer)" -ForegroundColor Yellow
+            Write-Host " Available:    $(Format-Bytes $FreeSpace)" -ForegroundColor Yellow
+            Write-Host "============================================================" -ForegroundColor DarkGray
+
+            Show-Notification "Magic Lantern Importer" "Import aborted: Insufficient disk space on $TargetDriveRoot"
+            return $false
+        }
+    }
+    catch {
+        Write-Log "Could not verify disk space for $TargetDriveRoot : $($_.Exception.Message)" "ERROR"
+    }
+
     Write-Host ""
     Write-Host "Files found: $TotalFiles" -ForegroundColor Cyan
     Write-Host "Total size:  $(Format-Bytes $TotalBytes)" -ForegroundColor Cyan
     Write-Host " - Photos:   $PhotoFilesCount file(s) ($(Format-Bytes $PhotoBytes))" -ForegroundColor Cyan
     Write-Host " - MLVs:     $MLVFilesCount file(s) ($(Format-Bytes $MLVBytes))" -ForegroundColor Cyan
+    if ($FreeSpace -gt 0) {
+        Write-Host " Free space: $(Format-Bytes $FreeSpace) ($TargetDriveRoot)" -ForegroundColor Cyan
+    }
 
     if ($DeleteSource) {
         Write-Host ""
@@ -1350,19 +1393,12 @@ function Import-Card {
     $OverallSuccess = ($FailedFiles -eq 0)
     Write-ImportManifest -DriveRoot $DriveRoot -WorkItems $WorkItems -Success $OverallSuccess
 
-    $MLVFSEnabled = [bool](Get-ConfigValue $MLVFS "Enabled" $false)
+$MLVFSEnabled = [bool](Get-ConfigValue $MLVFS "Enabled" $false)
     if ($MLVFSEnabled -and $OverallSuccess -and $MLVFiles.Count -gt 0) {
         $ControllerPath = [string](Get-ConfigValue $MLVFS "ControllerPath" "")
         if (Test-Path -LiteralPath $ControllerPath) {
             
             $TargetMountPath = $MLVDestination
-            if ($OrganizationMode -eq "ByDate") {
-                $LastMLVItem = $MLVFiles[-1].File
-                if ($null -ne $LastMLVItem) {
-                    $DateFolder = $LastMLVItem.LastWriteTime.ToString($DateFormat)
-                    $TargetMountPath = Join-Path $MLVDestination $DateFolder
-                }
-            }
 
             Write-Host ""
             Write-Host "Copy complete. Mounting imported MLV destination via Controller..." -ForegroundColor Yellow
@@ -1522,7 +1558,7 @@ Write-Host "  $MLVDestination"
 
 Write-Host ""
 Write-Host "Organization:"
-Write-Host "  $OrganizationMode"
+Write-Host "  Photos: $PhotoOrganizationMode | MLVs: $MLVOrganizationMode"
 
 Write-Host ""
 Write-Host "Verification:"

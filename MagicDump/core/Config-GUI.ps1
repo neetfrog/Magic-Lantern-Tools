@@ -3,7 +3,7 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$ConfigPath = Join-Path $ScriptRoot "config.json"
+$ConfigPath = Join-Path (Split-Path -Parent $ScriptRoot) "config.json"
 
 if (-not (Test-Path -LiteralPath $ConfigPath)) {
     [System.Windows.Forms.MessageBox]::Show("config.json not found at $ConfigPath", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
@@ -82,7 +82,10 @@ $Tab1 = New-Tab "Destinations"
 $Y1 = [ref][int]20
 $TxtPhotos = Add-Field $Tab1 "Photos Destination:" $Config.Destinations.Photos $Y1
 $TxtMLV = Add-Field $Tab1 "MLV Destination:" $Config.Destinations.MLV $Y1
-$CmbOrgMode = Add-Field $Tab1 "Organization Mode:" $Config.Organization.Mode $Y1 "Combo" $Config.Organization.AvailableModes
+$InitialPhotoMode = if ($Config.Organization.PhotoMode) { $Config.Organization.PhotoMode } else { $Config.Organization.Mode }
+$InitialMLVMode = if ($Config.Organization.MLVMode) { $Config.Organization.MLVMode } else { "Flat" }
+$CmbPhotoMode = Add-Field $Tab1 "Photo Organization Mode:" $InitialPhotoMode $Y1 "Combo" $Config.Organization.AvailableModes
+$CmbMLVMode = Add-Field $Tab1 "MLV Organization Mode:" $InitialMLVMode $Y1 "Combo" $Config.Organization.AvailableModes
 $TxtDateFormat = Add-Field $Tab1 "Date Format:" $Config.Organization.DateFormat $Y1
 
 # --- TAB 2: Card & Safety ---
@@ -139,7 +142,8 @@ $BtnSave.Add_Click({
     # Destinations & Org
     $Config.Destinations.Photos = $TxtPhotos.Text
     $Config.Destinations.MLV = $TxtMLV.Text
-    $Config.Organization.Mode = $CmbOrgMode.SelectedItem
+    $Config.Organization.PhotoMode = $CmbPhotoMode.SelectedItem
+    $Config.Organization.MLVMode = $CmbMLVMode.SelectedItem
     $Config.Organization.DateFormat = $TxtDateFormat.Text
 
     # Card & Safety

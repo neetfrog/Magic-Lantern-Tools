@@ -17,6 +17,6 @@ powershell.exe ^
     -File "%~dp0core\MLV-Importer.ps1"
 
 echo.
-echo Importer stopped.
+echo MagicDump stopped.
 echo.
 pause
