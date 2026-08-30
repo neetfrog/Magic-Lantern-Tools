@@ -28,15 +28,12 @@ $output = Join-Path $directory "${filename}_encoded.mp4"
     $output
 
 if ($LASTEXITCODE -eq 0) {
-    Add-Type -AssemblyName PresentationFramework
-    [System.Windows.MessageBox]::Show(
-        "Conversion complete:`n$output",
-        "FFmpeg"
-    )
+    exit 0
 } else {
     Add-Type -AssemblyName PresentationFramework
     [System.Windows.MessageBox]::Show(
         "FFmpeg conversion failed.`nExit code: $LASTEXITCODE",
         "FFmpeg Error"
     )
+    exit 1
 }
