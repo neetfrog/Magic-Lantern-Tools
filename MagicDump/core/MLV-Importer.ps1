@@ -1591,24 +1591,28 @@ function Eject-Drive {
     }
 
     try {
+        Write-Log "Force ejecting card: $DriveRoot"
 
-        Write-Log "Ejecting card: $DriveRoot"
+        # Step 1: Forcefully dismount the volume to drop open handles
+        $Volume = Get-CimInstance -ClassName Win32_Volume | Where-Object { $_.DriveLetter -eq $DriveRoot.TrimEnd('\') }
+        if ($null -ne $Volume) {
+            Invoke-CimMethod -InputObject $Volume -MethodName Dismount -Arguments @{ Force = $true; Permanent = $false } | Out-Null
+        }
 
+        # Step 2: Invoke Windows Shell Eject command for safe hardware removal notification
         $Shell = New-Object -ComObject Shell.Application
-
-        $DriveLetter = $DriveRoot.Substring(0, 2)
-
-        $Drive = $Shell.Namespace(17).ParseName($DriveLetter)
+        $DriveLetterOnly = $DriveRoot.Substring(0, 2)
+        $Drive = $Shell.Namespace(17).ParseName($DriveLetterOnly)
 
         if ($null -ne $Drive) {
             $Drive.InvokeVerb("Eject")
         }
 
-        Write-Log "Eject requested."
+        Write-Log "Force eject requested successfully."
     }
     catch {
         Write-Log `
-            "Could not eject card: $($_.Exception.Message)" `
+            "Could not force eject card: $($_.Exception.Message)" `
             "ERROR"
     }
 }

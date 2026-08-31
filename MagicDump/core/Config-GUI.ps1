@@ -78,12 +78,14 @@ function Add-Field {
         $BtnBrowse.Location = New-Object System.Drawing.Point(425, ($CurrentY - 4))
         $BtnBrowse.Size = New-Object System.Drawing.Size(65, 23)
         
-        $script:ActiveTextBox = $Control
+        # Attach the target textbox to the button's Tag property for safe scope retention
+        $BtnBrowse.Tag = $Control
         $BtnBrowse.Add_Click({
             $Browser = New-Object System.Windows.Forms.FolderBrowserDialog
             $Browser.Description = "Select Folder"
             if ($Browser.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-                $script:ActiveTextBox.Text = $Browser.SelectedPath
+                # Retrieve the textbox using $this.Tag
+                $this.Tag.Text = $Browser.SelectedPath
             }
         })
         $Tab.Controls.Add($BtnBrowse)
