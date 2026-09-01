@@ -319,7 +319,7 @@ $BtnReset.Size = New-Object System.Drawing.Size(120, 36)
 $BtnReset.Add_Click({
     $Confirm = [System.Windows.Forms.MessageBox]::Show("Are you sure you want to reset all fields to their default state?", "Confirm Reset", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
     if ($Confirm -eq [System.Windows.Forms.DialogResult]::Yes) {
-        $Global:script:Config = [PSCustomObject]@{
+        $DefaultConfig = [PSCustomObject]@{
             "Version"      = 4
             "Destinations" = [PSCustomObject]@{
                 "Photos" = "C:\MagicDump\Photos"
@@ -406,46 +406,46 @@ $BtnReset.Add_Click({
             }
         }
         
-        $TxtPhotos.Text = $Config.Destinations.Photos
-        $TxtMLV.Text = $Config.Destinations.MLV
-        $CmbPhotoMode.SelectedItem = $Config.Organization.PhotoMode
-        $CmbMLVMode.SelectedItem = $Config.Organization.MLVMode
-        $TxtDateFormat.Text = $Config.Organization.DateFormat
+        $TxtPhotos.Text = $DefaultConfig.Destinations.Photos
+        $TxtMLV.Text = $DefaultConfig.Destinations.MLV
+        $CmbPhotoMode.SelectedItem = $DefaultConfig.Organization.PhotoMode
+        $CmbMLVMode.SelectedItem = $DefaultConfig.Organization.MLVMode
+        $TxtDateFormat.Text = $DefaultConfig.Organization.DateFormat
 
-        $ChkOnlyRemovable.Checked = $Config.Card.OnlyRemovableDrives
-        $ChkAutoEject.Checked = $Config.Card.AutoEject
-        $ChkDeleteSource.Checked = $Config.Card.DeleteSourceAfterImport
-        $ChkRequireDelConf.Checked = $Config.Card.RequireDeleteConfirmation
-        $ChkDryRun.Checked = $Config.Safety.DryRun
-        $ChkNeverDelUnver.Checked = $Config.Safety.NeverDeleteUnlessVerified
-        $ChkNeverMove.Checked = $Config.Safety.NeverMoveSource
+        $ChkOnlyRemovable.Checked = $DefaultConfig.Card.OnlyRemovableDrives
+        $ChkAutoEject.Checked = $DefaultConfig.Card.AutoEject
+        $ChkDeleteSource.Checked = $DefaultConfig.Card.DeleteSourceAfterImport
+        $ChkRequireDelConf.Checked = $DefaultConfig.Card.RequireDeleteConfirmation
+        $ChkDryRun.Checked = $DefaultConfig.Safety.DryRun
+        $ChkNeverDelUnver.Checked = $DefaultConfig.Safety.NeverDeleteUnlessVerified
+        $ChkNeverMove.Checked = $DefaultConfig.Safety.NeverMoveSource
 
-        $ChkSkipExist.Checked = $Config.Copy.SkipExistingSameSize
-        $ChkReplaceDiff.Checked = $Config.Copy.ReplaceDifferentSize
-        $ChkUseTemp.Checked = $Config.Copy.UseTemporaryFiles
-        $TxtRetries.Text = $Config.Copy.Retries
-        $TxtRetryDelay.Text = $Config.Copy.RetryDelaySeconds
-        $ChkVerEnabled.Checked = $Config.Verification.Enabled
-        $CmbVerMethod.SelectedItem = $Config.Verification.Method
+        $ChkSkipExist.Checked = $DefaultConfig.Copy.SkipExistingSameSize
+        $ChkReplaceDiff.Checked = $DefaultConfig.Copy.ReplaceDifferentSize
+        $ChkUseTemp.Checked = $DefaultConfig.Copy.UseTemporaryFiles
+        $TxtRetries.Text = $DefaultConfig.Copy.Retries
+        $TxtRetryDelay.Text = $DefaultConfig.Copy.RetryDelaySeconds
+        $ChkVerEnabled.Checked = $DefaultConfig.Verification.Enabled
+        $CmbVerMethod.SelectedItem = $DefaultConfig.Verification.Method
 
-        $ChkScanSub.Checked = $Config.Scanning.ScanSubfolders
-        $TxtMinFiles.Text = $Config.Scanning.MinimumCameraFiles
-        $ChkStabEnabled.Checked = $Config.Stability.Enabled
-        $TxtStabChecks.Text = $Config.Stability.Checks
-        $TxtStabDelay.Text = $Config.Stability.DelaySeconds
-        $TxtPollInterval.Text = $Config.Monitoring.PollIntervalSeconds
-        $TxtMountSettle.Text = $Config.Monitoring.MountSettleSeconds
+        $ChkScanSub.Checked = $DefaultConfig.Scanning.ScanSubfolders
+        $TxtMinFiles.Text = $DefaultConfig.Scanning.MinimumCameraFiles
+        $ChkStabEnabled.Checked = $DefaultConfig.Stability.Enabled
+        $TxtStabChecks.Text = $DefaultConfig.Stability.Checks
+        $TxtStabDelay.Text = $DefaultConfig.Stability.DelaySeconds
+        $TxtPollInterval.Text = $DefaultConfig.Monitoring.PollIntervalSeconds
+        $TxtMountSettle.Text = $DefaultConfig.Monitoring.MountSettleSeconds
 
-        $ChkManifest.Checked = $Config.Manifest.Enabled
-        $TxtManifestDir.Text = $Config.Manifest.Directory
-        $ChkLogging.Checked = $Config.Logging.Enabled
-        $TxtLogDir.Text = $Config.Logging.Directory
-        $TxtLogFile.Text = $Config.Logging.FileName
-        $ChkMLVFS.Checked = $Config.MLVFS.Enabled
-        $TxtControllerPath.Text = $Config.MLVFS.ControllerPath
-        $TxtDriveLetter.Text = $Config.MLVFS.DriveLetter
-        $ChkMLVApp.Checked = $Config.MLVApp.Enabled
-        $TxtMLVAppPath.Text = $Config.MLVApp.ExecutablePath
+        $ChkManifest.Checked = $DefaultConfig.Manifest.Enabled
+        $TxtManifestDir.Text = $DefaultConfig.Manifest.Directory
+        $ChkLogging.Checked = $DefaultConfig.Logging.Enabled
+        $TxtLogDir.Text = $DefaultConfig.Logging.Directory
+        $TxtLogFile.Text = $DefaultConfig.Logging.FileName
+        $ChkMLVFS.Checked = $DefaultConfig.MLVFS.Enabled
+        $TxtControllerPath.Text = $DefaultConfig.MLVFS.ControllerPath
+        $TxtDriveLetter.Text = $DefaultConfig.MLVFS.DriveLetter
+        $ChkMLVApp.Checked = $DefaultConfig.MLVApp.Enabled
+        $TxtMLVAppPath.Text = $DefaultConfig.MLVApp.ExecutablePath
 
         [System.Windows.Forms.MessageBox]::Show("Settings restored to default profile values.", "Reset Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
     }

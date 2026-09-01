@@ -1286,11 +1286,33 @@ function Import-Card {
     $OverallSuccess = ($FailedFiles -eq 0)
     Write-ImportManifest -DriveRoot $DriveRoot -WorkItems $WorkItems -Success $OverallSuccess
 
-    $MLVFSEnabled = [bool](Get-ConfigValue $MLVFS "Enabled" $false)
+$MLVFSEnabled = [bool](Get-ConfigValue $MLVFS "Enabled" $false)
     if ($MLVFSEnabled -and $OverallSuccess -and $MLVFiles.Count -gt 0) {
         $ControllerPath = [string](Get-ConfigValue $MLVFS "ControllerPath" "")
         if (Test-Path -LiteralPath $ControllerPath) {
-            $TargetMountPath = $MLVDestination
+            # Collect unique parent directories for all imported MLVs in this batch
+            $ImportedMLVFolders = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+            foreach ($Work in @($WorkItems)) {
+                if ($Work.Type -eq "MLVGroup") {
+                    foreach ($Item in $Work.Group) {
+                        if ($Item.File.Extension.ToUpperInvariant() -eq ".MLV") {
+                            $ResolvedDest = Get-DestinationPath $Item.File "MLV"
+                            $ParentDir = Split-Path -Path $ResolvedDest -Parent
+                            [void]$ImportedMLVFolders.Add($ParentDir)
+                        }
+                    }
+                }
+            }
+
+            # If everything is from one day, mount that specific folder.
+            # If it spans multiple days, fall back to the root $MLVDestination.
+            if ($ImportedMLVFolders.Count -eq 1) {
+                $TargetMountPath = @($ImportedMLVFolders)[0]
+            }
+            else {
+                $TargetMountPath = $MLVDestination
+            }
+
             Write-Host ""
             Write-Host "  💽 [MLVFS] " -NoNewline -ForegroundColor Magenta
             Write-Host "Mounting virtual drive..." -ForegroundColor Yellow
@@ -1498,15 +1520,15 @@ if ($VerificationEnabled) {
     Write-Host "$VerificationMethod verification active" -ForegroundColor Green
 }
 else {
-    Write-Host "Disabled" -ForegroundColor DarkGray
+    Write-Host "Name" -ForegroundColor DarkGray
 }
 
 Write-Host "  🗑️ Delete Source        : " -NoNewline -ForegroundColor DarkGray
 if ($DeleteSource) {
-    Write-Host "Enabled" -ForegroundColor Red
+    Write-Host "Enabled (Remove files from card)" -ForegroundColor Red
 }
 else {
-    Write-Host "Disabled (Safe)" -ForegroundColor Green
+    Write-Host "Disabled (Keep files on card)" -ForegroundColor Green
 }
 Write-Divider
 Write-Host ""

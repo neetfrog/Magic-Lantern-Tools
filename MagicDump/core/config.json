@@ -1,8 +1,8 @@
 ﻿{
     "Version":  4,
     "Destinations":  {
-                         "Photos":  "C:\\MagicDump\\Photos",
-                         "MLV":  "C:\\MagicDump\\MLVs"
+                         "Photos":  "E:\\!Pictures\\!Dump",
+                         "MLV":  "E:\\!MLV"
                      },
     "Organization":  {
                          "Mode":  "Flat",
@@ -71,7 +71,7 @@
                  "OnlyRemovableDrives":  true,
                  "AutoEject":  true,
                  "EjectDelaySeconds":  2,
-                 "DeleteSourceAfterImport":  false,
+                 "DeleteSourceAfterImport":  true,
                  "RequireDeleteConfirmation":  false
              },
     "Safety":  {
