@@ -341,9 +341,9 @@ $BtnReset.Add_Click({
                 }
             }
             "Scanning"     = [PSCustomObject]@{
-                "ScanSubfolders"       = $true
-                "IgnoreFolders"        = @("System Volume Information", "`$RECYCLE.BIN")
-                "MinimumCameraFiles"   = 1
+                "ScanSubfolders"     = $true
+                "IgnoreFolders"      = @("System Volume Information", "`$RECYCLE.BIN")
+                "MinimumCameraFiles" = 1
             }
             "Copy"         = [PSCustomObject]@{
                 "SkipExistingSameSize" = $true
@@ -364,15 +364,15 @@ $BtnReset.Add_Click({
                 "DelaySeconds" = 1
             }
             "Monitoring"   = [PSCustomObject]@{
-                "PollIntervalSeconds"  = 1
-                "MountSettleSeconds"   = 1
+                "PollIntervalSeconds" = 1
+                "MountSettleSeconds"  = 1
             }
             "Card"         = [PSCustomObject]@{
                 "OnlyRemovableDrives"       = $true
                 "AutoEject"                 = $true
                 "EjectDelaySeconds"         = 2
                 "DeleteSourceAfterImport"   = $false
-                "RequireDeleteConfirmation" = $true
+                "RequireDeleteConfirmation" = $false
             }
             "Safety"       = [PSCustomObject]@{
                 "DryRun"                    = $false
