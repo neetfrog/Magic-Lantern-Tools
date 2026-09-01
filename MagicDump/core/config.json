@@ -1,7 +1,7 @@
 ﻿{
     "Version":  4,
     "Destinations":  {
-                         "Photos":  "C:\\!MagicDump\\Photos",
+                         "Photos":  "C:\\MagicDump\\Photos",
                          "MLV":  "C:\\MagicDump\\MLVs"
                      },
     "Organization":  {
@@ -46,12 +46,12 @@
                  "ReplaceDifferentSize":  false,
                  "UseTemporaryFiles":  false,
                  "TemporaryExtension":  ".importing",
-                 "Retries":  3,
-                 "RetryDelaySeconds":  3
+                 "Retries":  1,
+                 "RetryDelaySeconds":  1
              },
     "Verification":  {
                          "Enabled":  false,
-                         "Method":  "Size",
+                         "Method":  "None",
                          "AvailableMethods":  [
                                                   "None",
                                                   "Size",
@@ -72,7 +72,7 @@
                  "AutoEject":  true,
                  "EjectDelaySeconds":  2,
                  "DeleteSourceAfterImport":  false,
-                 "RequireDeleteConfirmation":  true
+                 "RequireDeleteConfirmation":  false
              },
     "Safety":  {
                    "DryRun":  false,
@@ -101,7 +101,7 @@
                   "DriveLetter":  "Z:\\"
               },
     "MLVApp":  {
-                   "Enabled":  false,
+                   "Enabled":  true,
                    "ExecutablePath":  "C:\\MLVScripts\\MLVApp\\MLVApp.exe"
                }
 }

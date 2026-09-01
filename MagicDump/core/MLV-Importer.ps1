@@ -4,7 +4,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 # ============================================================
-# MAGIC LANTERN MLV / PHOTO IMPORTER
+# Magic Dump - Magic Lantern Import Tool
 # Windows 11 / PowerShell 5.1+
 # ============================================================
 
@@ -17,8 +17,8 @@ $ConfigPath = Join-Path $ScriptRoot "config.json"
 
 if (-not (Test-Path -LiteralPath $ConfigPath)) {
     Write-Host ""
-    Write-Host "ERROR: config.json not found:" -ForegroundColor Red
-    Write-Host $ConfigPath
+    Write-Host "❌ ERROR: config.json not found:" -ForegroundColor Red
+    Write-Host "    $ConfigPath" -ForegroundColor DarkGray
     Write-Host ""
     Read-Host "Press Enter to exit"
     exit 1
@@ -30,8 +30,8 @@ try {
 }
 catch {
     Write-Host ""
-    Write-Host "ERROR: Could not read config.json" -ForegroundColor Red
-    Write-Host $_.Exception.Message
+    Write-Host "❌ ERROR: Could not read config.json" -ForegroundColor Red
+    Write-Host "    $($_.Exception.Message)" -ForegroundColor DarkGray
     Write-Host ""
     Read-Host "Press Enter to exit"
     exit 1
@@ -291,7 +291,7 @@ $LogFileName = [string](
 $LogFile = Join-Path $LogDirectory $LogFileName
 
 # ============================================================
-# FORMATTING
+# FORMATTING & VISUAL ENGINE
 # ============================================================
 
 function Format-Bytes {
@@ -318,6 +318,19 @@ function Format-Bytes {
     return "{0:N2} TB" -f ($Bytes / 1TB)
 }
 
+function Write-Divider {
+    param([string]$Title = "")
+    if ($Title) {
+        $Padding = [math]::Max(0, 52 - $Title.Length)
+        $LeftPad = [math]::Floor($Padding / 2)
+        $RightPad = $Padding - $LeftPad
+        $Line = ("=" * $LeftPad) + " [ " + $Title + " ] " + ("=" * $RightPad)
+        Write-Host $Line -ForegroundColor Cyan
+    } else {
+        Write-Host "============================================================" -ForegroundColor Cyan
+    }
+}
+
 # ============================================================
 # LOGGING
 # ============================================================
@@ -328,12 +341,17 @@ function Write-Log {
         [string]$Level = "INFO"
     )
 
-    $Line = "{0} [{1}] {2}" -f `
-        (Get-Date -Format "yyyy-MM-dd HH:mm:ss"),
-        $Level,
-        $Message
+    $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $LevelColor = switch ($Level) {
+        "ERROR" { "Red" }
+        "WARN"  { "Yellow" }
+        default { "Gray" }
+    }
 
-    Write-Host $Line
+    $Line = "{0} [{1}] {2}" -f $Timestamp, $Level, $Message
+    Write-Host "$Timestamp " -NoNewline -ForegroundColor DarkGray
+    Write-Host "[$Level] " -NoNewline -ForegroundColor $LevelColor
+    Write-Host $Message
 
     if ($LoggingEnabled) {
         try {
@@ -343,7 +361,7 @@ function Write-Log {
                 -Encoding UTF8
         }
         catch {
-            # Logging must never stop an import.
+            # Logging must never stop a copy.
         }
     }
 }
@@ -715,7 +733,7 @@ function Test-Copy {
 }
 
 # ============================================================
-# COPY FILE (WITH REAL-TIME PROGRESS, SPEED, AND ETA)
+# COPY FILE (WITH PROGRESS BAR)
 # ============================================================
 
 function Copy-SafeFile {
@@ -743,9 +761,9 @@ function Copy-SafeFile {
             $Existing.Length -eq $SourceFile.Length
         ) {
 
-            Write-Host ""
-            Write-Host "Already exists:" -ForegroundColor Cyan
-            Write-Host "  $($SourceFile.Name)"
+            Write-Host "  ℹ️ " -NoNewline -ForegroundColor Cyan
+            Write-Host "Skipped (Already Exists): " -NoNewline -ForegroundColor DarkGray
+            Write-Host "$($SourceFile.Name)"
 
             if (-not (Test-Copy `
                 $SourceFile.FullName `
@@ -758,23 +776,19 @@ function Copy-SafeFile {
                 return $false
             }
 
-            Write-Host "  Existing file verified." -ForegroundColor Green
-
+            Write-Host "      └─ ✔️ Verified integrity." -ForegroundColor Green
             return $true
         }
 
         if (-not $ReplaceDifferent) {
-
             Write-Log `
                 "Destination exists and replacement disabled: $Destination" `
                 "ERROR"
-
             return $false
         }
 
-        Write-Host ""
-        Write-Host "Replacing existing file:" -ForegroundColor Yellow
-        Write-Host "  $Destination"
+        Write-Host "  ⚠️ " -NoNewline -ForegroundColor Yellow
+        Write-Host "Overwriting conflicting file: $Destination" -ForegroundColor DarkGray
 
         Remove-Item `
             -LiteralPath $Destination `
@@ -787,44 +801,30 @@ function Copy-SafeFile {
         $TempPath = $Destination
 
         if ($UseTemporary) {
-
             $TempPath = $Destination + $TemporaryExtension
-
             if (Test-Path -LiteralPath $TempPath) {
-                Remove-Item `
-                    -LiteralPath $TempPath `
-                    -Force `
-                    -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath $TempPath -Force -ErrorAction SilentlyContinue
             }
         }
 
         try {
-
             Write-Host ""
-            Write-Host "[$FileNumber/$FileCount] $($SourceFile.Name)"
-            Write-Host "  Size: $(Format-Bytes $SourceFile.Length)"
+            Write-Host "  📁 [$FileNumber/$FileCount] " -NoNewline -ForegroundColor Cyan
+            Write-Host "$($SourceFile.Name) " -NoNewline -ForegroundColor White
+            Write-Host "($(Format-Bytes $SourceFile.Length))" -ForegroundColor DarkGray
 
             if ($Attempt -gt 1) {
-                Write-Host `
-                    "  Attempt: $Attempt/$Retries" `
-                    -ForegroundColor Yellow
+                Write-Host "      └─ 🔄 Retry Attempt: $Attempt/$Retries" -ForegroundColor Yellow
             }
 
             if ($DryRun) {
-                Write-Host "  DRY RUN: Copy skipped." -ForegroundColor Yellow
+                Write-Host "      └─ 🧪 [DRY RUN] Copy skipped." -ForegroundColor Yellow
                 return $true
             }
 
-            $DestinationDirectory = Split-Path `
-                -Path $TempPath `
-                -Parent
-
+            $DestinationDirectory = Split-Path -Path $TempPath -Parent
             if (-not (Test-Path -LiteralPath $DestinationDirectory)) {
-                New-Item `
-                    -ItemType Directory `
-                    -Path $DestinationDirectory `
-                    -Force |
-                    Out-Null
+                New-Item -ItemType Directory -Path $DestinationDirectory -Force | Out-Null
             }
 
             $SourceStream = New-Object System.IO.FileStream($SourceFile.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
@@ -852,12 +852,12 @@ function Copy-SafeFile {
                         $ETAText = "{0:D2}:{1:D2}" -f $ETA.Minutes, $ETA.Seconds
                         if ($ETA.Hours -gt 0) { $ETAText = "$($ETA.Hours):$ETAText" }
 
-                        $BarWidth = 15
+                        $BarWidth = 20
                         $Filled = [math]::Round(($CopiedBytes / $TotalLength) * $BarWidth)
                         $Empty = $BarWidth - $Filled
-                        $Bar = "[" + ("=" * $Filled) + (" " * $Empty) + "]"
+                        $Bar = ("█" * $Filled) + ("░" * $Empty)
 
-                        Write-Host -NoNewline "`r  $Bar $Percent% | $SpeedText | ETA: $ETAText   "
+                        Write-Host -NoNewline "`r      [$Bar] $Percent% | ⚡ $SpeedText | ⏱️ ETA: $ETAText   "
                     }
                 }
             }
@@ -868,58 +868,39 @@ function Copy-SafeFile {
                 Write-Host ""
             }
 
-            if (-not (Test-Copy `
-                $SourceFile.FullName `
-                $TempPath)) {
-
+            if (-not (Test-Copy $SourceFile.FullName $TempPath)) {
                 throw "Temporary file verification failed."
             }
 
             if ($UseTemporary) {
-
-                Move-Item `
-                    -LiteralPath $TempPath `
-                    -Destination $Destination `
-                    -Force `
-                    -ErrorAction Stop
+                Move-Item -LiteralPath $TempPath -Destination $Destination -Force -ErrorAction Stop
             }
 
-            if (-not (Test-Copy `
-                $SourceFile.FullName `
-                $Destination)) {
-
+            if (-not (Test-Copy $SourceFile.FullName $Destination)) {
                 throw "Final destination verification failed."
             }
 
-            Write-Host "  OK - verified" -ForegroundColor Green
+            Write-Host "      └─ " -NoNewline -ForegroundColor DarkGray
+            Write-Host "✔ SUCCESS & VERIFIED" -ForegroundColor Green
 
-            Write-Log `
-                "Successfully imported: $($SourceFile.FullName)"
+            $SuccessLogMsg = "Successfully copied: $($SourceFile.FullName)"
+            if ($LoggingEnabled) {
+                $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+                Add-Content -LiteralPath $LogFile -Value "$Timestamp [INFO] $SuccessLogMsg" -Encoding UTF8
+            }
 
             return $true
         }
         catch {
-
-            Write-Log `
-                "Attempt $Attempt failed for $($SourceFile.Name): $($_.Exception.Message)" `
-                "ERROR"
-
-            Write-Host ""
-            Write-Host `
-                "  FAILED: $($_.Exception.Message)" `
-                -ForegroundColor Red
+            Write-Log "Attempt $Attempt failed for $($SourceFile.Name): $($_.Exception.Message)" "ERROR"
+            Write-Host "      └─ ❌ FAILED: $($_.Exception.Message)" -ForegroundColor Red
 
             if (Test-Path -LiteralPath $TempPath) {
-                Remove-Item `
-                    -LiteralPath $TempPath `
-                    -Force `
-                    -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath $TempPath -Force -ErrorAction SilentlyContinue
             }
 
-            if ($Attempt -lt $Retries) {
-                if ($RetryDelay -gt 0) {
-                    Start-Sleep -Seconds $RetryDelay
-                }
+            if ($Attempt -lt $Retries -and $RetryDelay -gt 0) {
+                Start-Sleep -Seconds $RetryDelay
             }
         }
     }
@@ -960,7 +941,7 @@ function Get-MLVGroups {
     foreach ($Item in @($MLVFiles)) {
 
         $File = $Item.File
-        $Extension = $Extension = $File.Extension.ToUpperInvariant()
+        $Extension = $File.Extension.ToUpperInvariant()
 
         if ($Extension -match '^\.M[0-9]+$') {
 
@@ -1070,75 +1051,40 @@ function Remove-ImportedSource {
     }
 
     if ($DryRun) {
-        Write-Host ""
-        Write-Host `
-            "DRY RUN: source deletion skipped." `
-            -ForegroundColor Yellow
-
+        Write-Host "  🧪 [DRY RUN] Source deletion skipped." -ForegroundColor Yellow
         return $true
     }
 
     foreach ($Item in @($Items)) {
-
         $SourcePath = $Item.File.FullName
-
         if (-not (Test-Path -LiteralPath $SourcePath)) {
-            Write-Log `
-                "Source disappeared before deletion: $SourcePath" `
-                "ERROR"
-
+            Write-Log "Source disappeared before deletion: $SourcePath" "ERROR"
             return $false
         }
     }
 
     foreach ($Item in @($Items)) {
-
         $Path = $Item.File.FullName
-
         if (-not (Test-Path -LiteralPath $Path)) {
             continue
         }
 
         try {
-
-            $Destination = Get-DestinationPath `
-                $Item.File `
-                $(if ($Item.Type -eq "Photo") {
-                    "Photo"
-                }
-                else {
-                    "MLV"
-                })
+            $Destination = Get-DestinationPath $Item.File $(if ($Item.Type -eq "Photo") { "Photo" } else { "MLV" })
 
             if ($NeverDeleteUnlessVerified) {
-
-                if (-not (Test-Copy `
-                    $Path `
-                    $Destination)) {
-
-                    Write-Log `
-                        "REFUSING TO DELETE - verification failed: $Path" `
-                        "ERROR"
-
+                if (-not (Test-Copy $Path $Destination)) {
+                    Write-Log "REFUSING TO DELETE - verification failed: $Path" "ERROR"
                     return $false
                 }
             }
 
-            Write-Host ""
-            Write-Host "Deleting source:" -ForegroundColor Yellow
-            Write-Host "  $Path"
-
-            Remove-Item `
-                -LiteralPath $Path `
-                -Force `
-                -ErrorAction Stop
+            Write-Host "  🗑️ [Deleting Source] " -NoNewline -ForegroundColor Yellow
+            Write-Host "$Path" -ForegroundColor DarkGray
+            Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
         }
         catch {
-
-            Write-Log `
-                "Could not delete source: $Path - $($_.Exception.Message)" `
-                "ERROR"
-
+            Write-Log "Could not delete source: $Path - $($_.Exception.Message)" "ERROR"
             return $false
         }
     }
@@ -1155,49 +1101,26 @@ function Import-Card {
         [string]$DriveRoot
     )
 
-    Write-Log "Scanning card: $DriveRoot"
+    Write-Log "Starting copy process for volume: $DriveRoot"
 
     Write-Host ""
-    Write-Host "============================================================" `
-        -ForegroundColor DarkGray
-
-    Write-Host " CAMERA CARD: $DriveRoot" `
-        -ForegroundColor Cyan
-
-    Write-Host "============================================================" `
-        -ForegroundColor DarkGray
+    Write-Divider "📷 CARD DETECTED: $DriveRoot"
 
     $ScanRoot = $DriveRoot
     $Files = @(Get-CameraFiles $ScanRoot)
 
     if (@($Files).Count -eq 0) {
-        Write-Log "No camera files found."
+        Write-Log "No camera media detected."
         return $false
     }
 
-    $Photos = @(
-        $Files |
-            Where-Object {
-                $_.Type -eq "Photo"
-            }
-    )
-
-    $MLVFiles = @(
-        $Files |
-            Where-Object {
-                $_.Type -in @(
-                    "MLV",
-                    "MLVChunk"
-                )
-            }
-    )
-
+    $Photos = @($Files | Where-Object { $_.Type -eq "Photo" })
+    $MLVFiles = @($Files | Where-Object { $_.Type -in @("MLV", "MLVChunk") })
     $MLVGroups = Get-MLVGroups $MLVFiles
 
     $WorkItems = New-Object System.Collections.ArrayList
 
     foreach ($Item in @($Photos)) {
-
         [void]$WorkItems.Add(
             [PSCustomObject]@{
                 File = $Item.File
@@ -1208,11 +1131,8 @@ function Import-Card {
     }
 
     foreach ($Key in @($MLVGroups.Keys)) {
-
         $Group = @($MLVGroups[$Key])
-
         if (@($Group).Count -gt 0) {
-
             [void]$WorkItems.Add(
                 [PSCustomObject]@{
                     File = $Group[0].File
@@ -1233,7 +1153,6 @@ function Import-Card {
         foreach ($Item in @($Work.Group)) {
             [double]$Length = [double]$Item.File.Length
             $TotalBytes += $Length
-            
             if ($Item.Type -eq "Photo") {
                 $PhotoBytes += $Length
                 $PhotoFilesCount++
@@ -1246,13 +1165,12 @@ function Import-Card {
     }
 
     [int]$TotalFiles = 0
-
     foreach ($Work in @($WorkItems)) {
         $TotalFiles += @($Work.Group).Count
     }
 
     # ============================================================
-    # DISK SPACE PRE-CHECK & RETRIEVAL
+    # DISK SPACE PRE-CHECK
     # ============================================================
     $TargetDriveRoot = [System.IO.Path]::GetPathRoot([string]$MLVDestination)
     [double]$FreeSpace = 0
@@ -1263,17 +1181,16 @@ function Import-Card {
         [double]$RequiredSpace = $TotalBytes + 1GB
 
         if ($FreeSpace -lt $RequiredSpace) {
-            Write-Log "ABORT: Insufficient free space on $TargetDriveRoot. Required: $(Format-Bytes $RequiredSpace), Available: $(Format-Bytes $FreeSpace)" "ERROR"
+            Write-Log "ABORT: Insufficient disk space on $TargetDriveRoot. Required: $(Format-Bytes $RequiredSpace), Available: $(Format-Bytes $FreeSpace)" "ERROR"
             
             Write-Host ""
-            Write-Host "============================================================" -ForegroundColor DarkGray
-            Write-Host " IMPORT ABORTED: INSUFFICIENT DISK SPACE" -ForegroundColor Red
-            Write-Host " Target Drive: $TargetDriveRoot" -ForegroundColor Yellow
-            Write-Host " Required:     $(Format-Bytes $RequiredSpace) (including buffer)" -ForegroundColor Yellow
-            Write-Host " Available:    $(Format-Bytes $FreeSpace)" -ForegroundColor Yellow
-            Write-Host "============================================================" -ForegroundColor DarkGray
+            Write-Divider "❌ ERROR: INSUFFICIENT DISK SPACE"
+            Write-Host " 💾 Destination Volume: $TargetDriveRoot" -ForegroundColor Yellow
+            Write-Host " 📦 Required Space:     $(Format-Bytes $RequiredSpace)" -ForegroundColor Yellow
+            Write-Host " 📉 Available Space:    $(Format-Bytes $FreeSpace)" -ForegroundColor Red
+            Write-Divider
 
-            Show-Notification "Magic Lantern Importer" "Import aborted: Insufficient disk space on $TargetDriveRoot"
+            Show-Notification "MagicDump" "Import aborted: Insufficient space on $TargetDriveRoot"
             return $false
         }
     }
@@ -1281,20 +1198,24 @@ function Import-Card {
         Write-Log "Could not verify disk space for $TargetDriveRoot : $($_.Exception.Message)" "ERROR"
     }
 
-    Write-Host ""
-    Write-Host "Files found: $TotalFiles" -ForegroundColor Cyan
-    Write-Host "Total size:  $(Format-Bytes $TotalBytes)" -ForegroundColor Cyan
-    Write-Host " - Photos:   $PhotoFilesCount file(s) ($(Format-Bytes $PhotoBytes))" -ForegroundColor Cyan
-    Write-Host " - MLVs:     $MLVFilesCount file(s) ($(Format-Bytes $MLVBytes))" -ForegroundColor Cyan
+    Write-Host "  📊 [Stats] " -NoNewline -ForegroundColor Cyan
+    Write-Host "Total Size: " -NoNewline -ForegroundColor DarkGray
+    Write-Host "$(Format-Bytes $TotalBytes) " -NoNewline -ForegroundColor White
+    Write-Host "($TotalFiles files)" -ForegroundColor DarkGray
+
+    Write-Host "          ├─ 🖼️ Photos : $PhotoFilesCount file(s) ($(Format-Bytes $PhotoBytes))" -ForegroundColor Cyan
+    Write-Host "          └─ 🎬 MLVs   : $MLVFilesCount file(s) ($(Format-Bytes $MLVBytes))" -ForegroundColor Cyan
+
     if ($FreeSpace -gt 0) {
-        Write-Host " Free space: $(Format-Bytes $FreeSpace) ($TargetDriveRoot)" -ForegroundColor Cyan
+        Write-Host "  💾 [Disk]  " -NoNewline -ForegroundColor Cyan
+        Write-Host "Free Space: " -NoNewline -ForegroundColor DarkGray
+        Write-Host "$(Format-Bytes $FreeSpace) " -NoNewline -ForegroundColor Green
+        Write-Host "available on $TargetDriveRoot" -ForegroundColor DarkGray
     }
 
     if ($DeleteSource) {
         Write-Host ""
-        Write-Host `
-            "WARNING: SOURCE DELETE IS ENABLED" `
-            -ForegroundColor Red
+        Write-Host "  ⚠️ [WARNING]: SOURCE FILES WILL BE DELETED AFTER COPY [!]" -ForegroundColor Red
     }
 
     Write-Host ""
@@ -1313,25 +1234,13 @@ function Import-Card {
             $FileNumber++
 
             if (-not (Test-FileStable $Item.File)) {
-
-                Write-Log `
-                    "File was not stable: $($Item.File.FullName)" `
-                    "ERROR"
-
+                Write-Log "File is not stable: $($Item.File.FullName)" "ERROR"
                 $GroupSuccess = $false
                 $FailedFiles++
-
                 continue
             }
 
-            $Destination = Get-DestinationPath `
-                $Item.File `
-                $(if ($Item.Type -eq "Photo") {
-                    "Photo"
-                }
-                else {
-                    "MLV"
-                })
+            $Destination = Get-DestinationPath $Item.File $(if ($Item.Type -eq "Photo") { "Photo" } else { "MLV" })
 
             $Success = Copy-SafeFile `
                 -SourceFile $Item.File `
@@ -1350,44 +1259,27 @@ function Import-Card {
         }
 
         if (-not $GroupSuccess) {
-            # Clean up partial destination copies for this failed work item/group
             foreach ($CopiedDest in $SuccessfullyCopiedInGroup) {
                 if (Test-Path -LiteralPath $CopiedDest) {
-                    Write-Host "Cleaning up partial destination file: $CopiedDest" -ForegroundColor Yellow
+                    Write-Host "  🧹 [Cleanup] Removing partial file: $CopiedDest" -ForegroundColor Yellow
                     Remove-Item -LiteralPath $CopiedDest -Force -ErrorAction SilentlyContinue
                 }
             }
         }
 
         if ($GroupSuccess -and $DeleteSource) {
-
             Write-Host ""
-            Write-Host `
-                "Import verified. Removing source files..." `
-                -ForegroundColor Yellow
-
+            Write-Host "  🧹 [Cleanup] Copy verified. Deleting source files..." -ForegroundColor Yellow
             if (-not (Remove-ImportedSource $Work.Group)) {
-
-                Write-Log `
-                    "Source deletion failed for work item." `
-                    "ERROR"
+                Write-Log "Source deletion failed." "ERROR"
             }
             else {
-
-                Write-Host `
-                    "Source cleanup complete." `
-                    -ForegroundColor Green
+                Write-Host "  🗑️ [Cleanup] Source files deleted." -ForegroundColor Green
             }
         }
-        elseif (
-            (-not $GroupSuccess) -and
-            ($Work.Type -eq "MLVGroup")
-        ) {
-
+        elseif ((-not $GroupSuccess) -and ($Work.Type -eq "MLVGroup")) {
             Write-Host ""
-            Write-Host `
-                "MLV recording NOT deleted because one or more files failed." `
-                -ForegroundColor Red
+            Write-Host "  🛡️ [Protection] MLV group kept on card due to copy errors." -ForegroundColor Red
         }
     }
 
@@ -1398,31 +1290,31 @@ function Import-Card {
     if ($MLVFSEnabled -and $OverallSuccess -and $MLVFiles.Count -gt 0) {
         $ControllerPath = [string](Get-ConfigValue $MLVFS "ControllerPath" "")
         if (Test-Path -LiteralPath $ControllerPath) {
-            
             $TargetMountPath = $MLVDestination
-
             Write-Host ""
-            Write-Host "Copy complete. Mounting imported MLV destination via Controller..." -ForegroundColor Yellow
-            Write-Log "Invoking batch mount script post-copy: $ControllerPath mount $TargetMountPath"
+            Write-Host "  💽 [MLVFS] " -NoNewline -ForegroundColor Magenta
+            Write-Host "Mounting virtual drive..." -ForegroundColor Yellow
+            Write-Log "Running controller: $ControllerPath mount $TargetMountPath"
 
             try {
                 & "$ControllerPath" "mount" "$TargetMountPath"
-                Write-Host "MLVFS mounted successfully to Z:\ ($TargetMountPath)" -ForegroundColor Green
+                Write-Host "  💽 [MLVFS] Mounted successfully to Z:\ ($TargetMountPath)" -ForegroundColor Green
             }
             catch {
                 Write-Log "Failed to mount MLV destination: $($_.Exception.Message)" "ERROR"
-                Write-Host "WARNING: Post-copy mount failed." -ForegroundColor Red
+                Write-Host "  💽 [MLVFS] WARNING: Virtual mount failed." -ForegroundColor Red
             }
         }
     }
 
-$MLVAppEnabled = [bool](Get-ConfigValue $MLVApp "Enabled" $false)
+    $MLVAppEnabled = [bool](Get-ConfigValue $MLVApp "Enabled" $false)
     if ($MLVAppEnabled -and $OverallSuccess -and $MLVFiles.Count -gt 0) {
         $MLVAppPath = [string](Get-ConfigValue $MLVApp "ExecutablePath" "C:\MLVScripts\MLVApp\MLVApp.exe")
         if (Test-Path -LiteralPath $MLVAppPath) {
             Write-Host ""
-            Write-Host "Generating MLVApp session file for imported clips..." -ForegroundColor Yellow
-            Write-Log "Generating dynamic session file for MLVApp"
+            Write-Host "  🎬 [MLVApp] " -NoNewline -ForegroundColor Magenta
+            Write-Host "Creating session file for MLVApp..." -ForegroundColor Yellow
+            Write-Log "Generating session file for MLVApp"
 
             try {
                 $SessionItems = @()
@@ -1432,7 +1324,6 @@ $MLVAppEnabled = [bool](Get-ConfigValue $MLVApp "Enabled" $false)
                             if ($Item.File.Extension.ToUpperInvariant() -eq ".MLV") {
                                 $DestinationPath = Get-DestinationPath $Item.File "MLV"
                                 if (Test-Path -LiteralPath $DestinationPath) {
-                                    # Normalize path separators for MLVApp XML compatibility
                                     $NormalizedPath = $DestinationPath -replace '\\', '/'
                                     $SessionItems += $NormalizedPath
                                 }
@@ -1482,47 +1373,34 @@ $MLVAppEnabled = [bool](Get-ConfigValue $MLVApp "Enabled" $false)
                     }
                     
                     [void]$XmlBuilder.AppendLine('</mlv_files>')
-                    
                     Set-Content -LiteralPath $SessionFilePath -Value $XmlBuilder.ToString() -Encoding UTF8
                     
                     Start-Process -FilePath $MLVAppPath -ArgumentList "`"$SessionFilePath`""
-                    Write-Host "MLVApp launched successfully via session file." -ForegroundColor Green
+                    Write-Host "  🎬 [MLVApp] Opened successfully." -ForegroundColor Green
                 }
             }
             catch {
-                Write-Log "Failed to launch MLVApp via session file: $($_.Exception.Message)" "ERROR"
-                Write-Host "WARNING: Failed to launch MLVApp session." -ForegroundColor Red
+                Write-Log "Failed to launch MLVApp: $($_.Exception.Message)" "ERROR"
+                Write-Host "  🎬 [MLVApp] WARNING: Failed to launch application." -ForegroundColor Red
             }
         }
     }
 
     Write-Host ""
-    Write-Host "============================================================" `
-        -ForegroundColor DarkGray
-
     if ($OverallSuccess) {
-        Write-Host `
-            " IMPORT COMPLETE" `
-            -ForegroundColor Green
+        Write-Divider "🎉 IMPORT COMPLETE: SUCCESS"
+        Write-Host "  ✔️ Successful Files : $SuccessfulFiles" -ForegroundColor Green
+        Write-Host "  ❌ Failed Files     : $FailedFiles" -ForegroundColor DarkGray
+        Write-Host "  📦 Total Copied     : $(Format-Bytes $TotalBytes)" -ForegroundColor White
     }
     else {
-        Write-Host `
-            " IMPORT FINISHED WITH ERRORS" `
-            -ForegroundColor Red
+        Write-Divider "⚠️ IMPORT COMPLETE WITH WARNINGS"
+        Write-Host "  ✔️ Successful Files : $SuccessfulFiles" -ForegroundColor Green
+        Write-Host "  ❌ Failed Files     : $FailedFiles" -ForegroundColor Red
     }
+    Write-Divider
 
-    Write-Host " Successful files: $SuccessfulFiles"
-    Write-Host " Failed files:     $FailedFiles"
-    Write-Host " Total size:       $(Format-Bytes $TotalBytes)"
-    Write-Host "  - Photos:        $PhotoFilesCount file(s) ($(Format-Bytes $PhotoBytes))"
-    Write-Host "  - MLVs:          $MLVFilesCount file(s) ($(Format-Bytes $MLVBytes))"
-
-    Write-Host "============================================================" `
-        -ForegroundColor DarkGray
-
-    Write-Log `
-        "Card complete. Successful: $SuccessfulFiles | Failed: $FailedFiles"
-
+    Write-Log "Import session finished. Success: $SuccessfulFiles | Failed: $FailedFiles"
     return $OverallSuccess
 }
 
@@ -1531,48 +1409,32 @@ $MLVAppEnabled = [bool](Get-ConfigValue $MLVApp "Enabled" $false)
 # ============================================================
 
 function Confirm-DeleteMode {
-
-    if (-not $DeleteSource) {
-        return $true
-    }
-
-    if (-not $RequireDeleteConfirmation) {
-        return $true
-    }
+    if (-not $DeleteSource) { return $true }
+    if (-not $RequireDeleteConfirmation) { return $true }
 
     try {
-
         Add-Type -AssemblyName System.Windows.Forms
-
         $Message = @"
-DELETE FROM CAMERA CARD IS ENABLED.
+WARNING:
+DELETE SOURCE FILES AFTER IMPORT IS ENABLED.
 
-Files will ONLY be deleted after a successful verified import.
-
-MLV split files are treated as one recording.
+Files will be permanently deleted from the camera card AFTER verification passes.
 
 Do you want to continue?
 "@
 
         $Result = [System.Windows.Forms.MessageBox]::Show(
             $Message,
-            "Magic Lantern Importer - DELETE ENABLED",
+            "MagicDump - Delete Source Enabled",
             [System.Windows.Forms.MessageBoxButtons]::YesNo,
             [System.Windows.Forms.MessageBoxIcon]::Warning,
             [System.Windows.Forms.MessageBoxDefaultButton]::Button2
         )
 
-        return (
-            $Result -eq
-            [System.Windows.Forms.DialogResult]::Yes
-        )
+        return ($Result -eq [System.Windows.Forms.DialogResult]::Yes)
     }
     catch {
-        Write-Host ""
-        Write-Host `
-            "Could not display delete confirmation." `
-            -ForegroundColor Red
-
+        Write-Host "Could not display confirmation dialog." -ForegroundColor Red
         return $false
     }
 }
@@ -1586,20 +1448,16 @@ function Eject-Drive {
         [string]$DriveRoot
     )
 
-    if (-not $AutoEject) {
-        return
-    }
+    if (-not $AutoEject) { return }
 
     try {
-        Write-Log "Force ejecting card: $DriveRoot"
+        Write-Log "Safely removing drive: $DriveRoot"
 
-        # Step 1: Forcefully dismount the volume to drop open handles
         $Volume = Get-CimInstance -ClassName Win32_Volume | Where-Object { $_.DriveLetter -eq $DriveRoot.TrimEnd('\') }
         if ($null -ne $Volume) {
             Invoke-CimMethod -InputObject $Volume -MethodName Dismount -Arguments @{ Force = $true; Permanent = $false } | Out-Null
         }
 
-        # Step 2: Invoke Windows Shell Eject command for safe hardware removal notification
         $Shell = New-Object -ComObject Shell.Application
         $DriveLetterOnly = $DriveRoot.Substring(0, 2)
         $Drive = $Shell.Namespace(17).ParseName($DriveLetterOnly)
@@ -1608,90 +1466,81 @@ function Eject-Drive {
             $Drive.InvokeVerb("Eject")
         }
 
-        Write-Log "Force eject requested successfully."
+        Write-Log "Drive dismounted."
     }
     catch {
-        Write-Log `
-            "Could not force eject card: $($_.Exception.Message)" `
-            "ERROR"
+        Write-Log "Could not unmount volume: $($_.Exception.Message)" "ERROR"
     }
 }
 
 # ============================================================
-# STARTUP
+# STARTUP SCREEN & INITIALIZATION
 # ============================================================
 
 Clear-Host
 
 Write-Host ""
-Write-Host "============================================================" `
-    -ForegroundColor Cyan
-
-Write-Host "          MAGIC LANTERN CAMERA IMPORTER" `
-    -ForegroundColor Cyan
-
-Write-Host "============================================================" `
-    -ForegroundColor Cyan
-
+Write-Host "  📸 MagicDump | github.com/neetfrog/Magic-Lantern-Tools" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Photos destination:"
-Write-Host "  $PhotoDestination"
 
-Write-Host ""
-Write-Host "MLV destination:"
-Write-Host "  $MLVDestination"
+Write-Divider "⚙️ SETTINGS"
+Write-Host "  🖼️ Photos Destination   : " -NoNewline -ForegroundColor DarkGray
+Write-Host "$PhotoDestination" -ForegroundColor White
 
-Write-Host ""
-Write-Host "Organization:"
-Write-Host "  Photos: $PhotoOrganizationMode | MLVs: $MLVOrganizationMode"
+Write-Host "  🎬 MLV Destination      : " -NoNewline -ForegroundColor DarkGray
+Write-Host "$MLVDestination" -ForegroundColor White
 
-Write-Host ""
-Write-Host "Verification:"
-Write-Host "  $VerificationMethod"
+Write-Host "  📁 Organization         : " -NoNewline -ForegroundColor DarkGray
+Write-Host "Photos [$PhotoOrganizationMode] | MLVs [$MLVOrganizationMode]" -ForegroundColor Cyan
 
-Write-Host ""
-Write-Host "Delete source after import:"
-
-if ($DeleteSource) {
-    Write-Host "  ENABLED" -ForegroundColor Red
+Write-Host "  🛡️ Verification         : " -NoNewline -ForegroundColor DarkGray
+if ($VerificationEnabled) {
+    Write-Host "$VerificationMethod verification active" -ForegroundColor Green
 }
 else {
-    Write-Host "  Disabled" -ForegroundColor Green
+    Write-Host "Disabled" -ForegroundColor DarkGray
 }
 
+Write-Host "  🗑️ Delete Source        : " -NoNewline -ForegroundColor DarkGray
+if ($DeleteSource) {
+    Write-Host "Enabled" -ForegroundColor Red
+}
+else {
+    Write-Host "Disabled (Safe)" -ForegroundColor Green
+}
+Write-Divider
 Write-Host ""
 
-Write-Log "Magic Lantern Importer started."
+Write-Log "Application started."
 
 if ($DeleteSource) {
     if (-not (Confirm-DeleteMode)) {
-        Write-Log `
-            "Startup cancelled because source deletion was enabled."
-
-        Write-Host ""
-        Write-Host "Cancelled." -ForegroundColor Yellow
-
+        Write-Log "Startup aborted: User declined delete source mode."
+        Write-Host "  ⚠️ [!] Aborted by user." -ForegroundColor Yellow
         exit 0
     }
 }
 
 # ============================================================
-# DRIVE MONITOR
+# DRIVE MONITOR & QUEUE SYSTEM
 # ============================================================
 
 $ProcessedDrives = @{}
+$CardQueue = [System.Collections.Generic.Queue[string]]::new()
+$QueuedDrives = @{}
+
+Write-Host "  ℹ️ Monitoring drives for camera cards..." -ForegroundColor Cyan
+Write-Host ""
 
 while ($true) {
 
     try {
-
         $Drives = @(Get-EligibleDrives)
 
         foreach ($Drive in $Drives) {
-
             $Root = $Drive.DeviceID + "\"
 
-            if ($ProcessedDrives.ContainsKey($Root)) {
+            if ($ProcessedDrives.ContainsKey($Root) -or $QueuedDrives.ContainsKey($Root)) {
                 continue
             }
 
@@ -1705,46 +1554,42 @@ while ($true) {
                 continue
             }
 
-            Write-Log "Camera card detected: $Root"
-
-            Show-Notification `
-                "Magic Lantern Importer" `
-                "Camera card detected: $Root"
-
             if ($MountSettleSeconds -gt 0) {
                 Start-Sleep -Seconds $MountSettleSeconds
             }
 
             $FilesAfterSettle = @(Get-CameraFiles $Root)
-
             if (@($FilesAfterSettle).Count -lt $MinimumCameraFiles) {
                 continue
             }
 
-            $Success = Import-Card $Root
+            # Enqueue the detected camera card safely to prevent concurrent collisions
+            $CardQueue.Enqueue($Root)
+            $QueuedDrives[$Root] = $true
+            
+            Write-Log "Camera card queued: $Root (Queue depth: $($CardQueue.Count))"
+            Write-Host "  📥 [Queue] Card added to import queue: $Root [Queue Position: $($CardQueue.Count)]" -ForegroundColor Yellow
+            Show-Notification "MagicDump" "Camera card queued: $Root"
+        }
+
+        # Process the queue sequentially to avoid write collisions on destinations
+        while ($CardQueue.Count -gt 0) {
+            $CurrentRoot = $CardQueue.Dequeue()
+
+            Write-Host ""
+            Write-Host "  ⏳ [Queue] Processing next card from queue: $CurrentRoot" -ForegroundColor Cyan
+
+            $Success = Import-Card $CurrentRoot
 
             if ($Success) {
-
-                $ProcessedDrives[$Root] = Get-Date
-
-                Write-Log `
-                    "Import completed successfully: $Root"
-
-                Show-Notification `
-                    "Magic Lantern Importer" `
-                    "Import completed: $Root"
-
-                Eject-Drive $Root
+                $ProcessedDrives[$CurrentRoot] = Get-Date
+                Write-Log "Import finished successfully: $CurrentRoot"
+                Show-Notification "MagicDump" "Import complete: $CurrentRoot"
+                Eject-Drive $CurrentRoot
             }
             else {
-
-                Write-Log `
-                    "Import finished with errors: $Root" `
-                    "ERROR"
-
-                Show-Notification `
-                    "Magic Lantern Importer" `
-                    "Import finished with errors: $Root"
+                Write-Log "Import finished with errors: $CurrentRoot" "ERROR"
+                Show-Notification "MagicDump" "Import failed: $CurrentRoot"
             }
         }
 
@@ -1758,18 +1603,13 @@ while ($true) {
         foreach ($OldRoot in @($ProcessedDrives.Keys)) {
             if ($CurrentRoots -notcontains $OldRoot) {
                 [void]$ProcessedDrives.Remove($OldRoot)
+                [void]$QueuedDrives.Remove($OldRoot)
             }
         }
     }
     catch {
-        Write-Log `
-            "Monitor error: $($_.Exception.Message)" `
-            "ERROR"
-
-        Write-Host ""
-        Write-Host `
-            "Monitor error: $($_.Exception.Message)" `
-            -ForegroundColor Red
+        Write-Log "Monitor Error: $($_.Exception.Message)" "ERROR"
+        Write-Host "  ❌ Error: $($_.Exception.Message)" -ForegroundColor Red
     }
 
     if ($PollInterval -gt 0) {

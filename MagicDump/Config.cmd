@@ -1,5 +1,5 @@
 @echo off
-title Magic Lantern Importer - Configuration GUI
+title MagicDump Configuration GUI
 
 cd /d "%~dp0"
 
