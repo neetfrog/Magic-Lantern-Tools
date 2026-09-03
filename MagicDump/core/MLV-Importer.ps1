@@ -82,11 +82,11 @@ $MLVFS = Get-ConfigValue $Config "MLVFS" $null
 $MLVApp = Get-ConfigValue $Config "MLVApp" $null
 
 $PhotoDestination = [string](
-    Get-ConfigValue $Destinations "Photos" "D:\Camera Import\Photos"
+    Get-ConfigValue $Destinations "Photos" "C:\MagicDump\Photos"
 )
 
 $MLVDestination = [string](
-    Get-ConfigValue $Destinations "MLV" "D:\Camera Import\MLV"
+    Get-ConfigValue $Destinations "MLV" "C:\MagicDump\MLV"
 )
 
 $OrganizationMode = [string](
@@ -1173,14 +1173,22 @@ function Import-Card {
     # DISK SPACE PRE-CHECK
     # ============================================================
     $TargetDriveRoot = [System.IO.Path]::GetPathRoot([string]$MLVDestination)
-    [double]$FreeSpace = 0
+    [double]$FreeSpace = -1
+    
     try {
-        $DriveInfo = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='$($TargetDriveRoot.TrimEnd('\'))'" -ErrorAction Stop
-        $FreeSpace = [double]$DriveInfo.FreeSpace
+        if ($TargetDriveRoot -match '^[a-zA-Z]:\\') {
+            $DriveLetter = $TargetDriveRoot.Substring(0, 2)
+            $DriveInfo = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='$DriveLetter'" -ErrorAction Stop
+            $FreeSpace = [double]$DriveInfo.FreeSpace
+        }
+        else {
+            $DriveInfoNet = [System.IO.DriveInfo]::new($TargetDriveRoot)
+            $FreeSpace = [double]$DriveInfoNet.TotalFreeSpace
+        }
 
         [double]$RequiredSpace = $TotalBytes + 1GB
 
-        if ($FreeSpace -lt $RequiredSpace) {
+        if ($FreeSpace -ge 0 -and $FreeSpace -lt $RequiredSpace) {
             Write-Log "ABORT: Insufficient disk space on $TargetDriveRoot. Required: $(Format-Bytes $RequiredSpace), Available: $(Format-Bytes $FreeSpace)" "ERROR"
             
             Write-Host ""
@@ -1195,7 +1203,7 @@ function Import-Card {
         }
     }
     catch {
-        Write-Log "Could not verify disk space for $TargetDriveRoot : $($_.Exception.Message)" "ERROR"
+        Write-Log "Could not verify disk space for $TargetDriveRoot : $($_.Exception.Message)" "WARN"
     }
 
     Write-Host "  📊 [Stats] " -NoNewline -ForegroundColor Cyan
@@ -1206,7 +1214,7 @@ function Import-Card {
     Write-Host "          ├─ 🖼️ Photos : $PhotoFilesCount file(s) ($(Format-Bytes $PhotoBytes))" -ForegroundColor Cyan
     Write-Host "          └─ 🎬 MLVs   : $MLVFilesCount file(s) ($(Format-Bytes $MLVBytes))" -ForegroundColor Cyan
 
-    if ($FreeSpace -gt 0) {
+    if ($FreeSpace -ge 0) {
         Write-Host "  💾 [Disk]  " -NoNewline -ForegroundColor Cyan
         Write-Host "Free Space: " -NoNewline -ForegroundColor DarkGray
         Write-Host "$(Format-Bytes $FreeSpace) " -NoNewline -ForegroundColor Green
@@ -1286,11 +1294,10 @@ function Import-Card {
     $OverallSuccess = ($FailedFiles -eq 0)
     Write-ImportManifest -DriveRoot $DriveRoot -WorkItems $WorkItems -Success $OverallSuccess
 
-$MLVFSEnabled = [bool](Get-ConfigValue $MLVFS "Enabled" $false)
+    $MLVFSEnabled = [bool](Get-ConfigValue $MLVFS "Enabled" $false)
     if ($MLVFSEnabled -and $OverallSuccess -and $MLVFiles.Count -gt 0) {
         $ControllerPath = [string](Get-ConfigValue $MLVFS "ControllerPath" "")
         if (Test-Path -LiteralPath $ControllerPath) {
-            # Collect unique parent directories for all imported MLVs in this batch
             $ImportedMLVFolders = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
             foreach ($Work in @($WorkItems)) {
                 if ($Work.Type -eq "MLVGroup") {
@@ -1304,8 +1311,6 @@ $MLVFSEnabled = [bool](Get-ConfigValue $MLVFS "Enabled" $false)
                 }
             }
 
-            # If everything is from one day, mount that specific folder.
-            # If it spans multiple days, fall back to the root $MLVDestination.
             if ($ImportedMLVFolders.Count -eq 1) {
                 $TargetMountPath = @($ImportedMLVFolders)[0]
             }
