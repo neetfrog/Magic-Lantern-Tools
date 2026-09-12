@@ -4,7 +4,10 @@ Add-Type -AssemblyName System.Drawing
 
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$ScriptRoot = $PSScriptRoot
+if (-not $ScriptRoot) {
+    $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
+}
 $ConfigPath = Join-Path $ScriptRoot "config.json"
 
 if (-not (Test-Path -LiteralPath $ConfigPath)) {
@@ -130,7 +133,12 @@ function Add-Field {
         if ($null -ne $Options) {
             foreach ($Opt in $Options) { [void]$Control.Items.Add($Opt) }
         }
-        $Control.SelectedItem = [string]$InitialValue
+        $MatchIndex = $Control.FindStringExact([string]$InitialValue)
+        if ($MatchIndex -ge 0) {
+            $Control.SelectedIndex = $MatchIndex
+        } else {
+            if ($Control.Items.Count -gt 0) { $Control.SelectedIndex = 0 }
+        }
         $Tab.Controls.Add($Control)
         $YRef.Value = $CurrentY + 36
         return $Control
@@ -184,7 +192,6 @@ function Add-Field {
 
 # --- BUILD PAGES ---
 
-# 1. Destinations
 $Page1 = New-SettingsPage "Destinations" "Storage & Organization"
 $Y1 = [ref][int]20
 $TxtPhotos = Add-Field $Page1 "Photos Destination" $Config.Destinations.Photos $Y1 "Browse"
@@ -195,7 +202,6 @@ $CmbPhotoMode = Add-Field $Page1 "Photo Org Mode" $InitialPhotoMode $Y1 "Combo" 
 $CmbMLVMode = Add-Field $Page1 "MLV Org Mode" $InitialMLVMode $Y1 "Combo" $Config.Organization.AvailableModes
 $TxtDateFormat = Add-Field $Page1 "Date Format" $Config.Organization.DateFormat $Y1
 
-# 2. Card & Safety
 $Page2 = New-SettingsPage "Safety" "Card & Safety Rules"
 $Y2 = [ref][int]20
 $ChkOnlyRemovable = Add-Field $Page2 "Only Removable Drives" $Config.Card.OnlyRemovableDrives $Y2 "Check"
@@ -206,7 +212,6 @@ $ChkDryRun = Add-Field $Page2 "Dry Run (Simulate Only)" $Config.Safety.DryRun $Y
 $ChkNeverDelUnver = Add-Field $Page2 "Never Delete Unverified" $Config.Safety.NeverDeleteUnlessVerified $Y2 "Check"
 $ChkNeverMove = Add-Field $Page2 "Never Move Source" $Config.Safety.NeverMoveSource $Y2 "Check"
 
-# 3. Copy & Verification
 $Page3 = New-SettingsPage "Copy" "Copy & Verification Settings"
 $Y3 = [ref][int]20
 $ChkSkipExist = Add-Field $Page3 "Skip Existing Same Size" $Config.Copy.SkipExistingSameSize $Y3 "Check"
@@ -217,7 +222,6 @@ $TxtRetryDelay = Add-Field $Page3 "Retry Delay Seconds" $Config.Copy.RetryDelayS
 $ChkVerEnabled = Add-Field $Page3 "Verification Enabled" $Config.Verification.Enabled $Y3 "Check"
 $CmbVerMethod = Add-Field $Page3 "Verification Method" $Config.Verification.Method $Y3 "Combo" $Config.Verification.AvailableMethods
 
-# 4. Scanning & Stability
 $Page4 = New-SettingsPage "Scanning" "Scanning & Polling Parameters"
 $Y4 = [ref][int]20
 $ChkScanSub = Add-Field $Page4 "Scan Subfolders" $Config.Scanning.ScanSubfolders $Y4 "Check"
@@ -228,7 +232,6 @@ $TxtStabDelay = Add-Field $Page4 "Stability Delay Secs" $Config.Stability.DelayS
 $TxtPollInterval = Add-Field $Page4 "Poll Interval Secs" $Config.Monitoring.PollIntervalSeconds $Y4
 $TxtMountSettle = Add-Field $Page4 "Mount Settle Secs" $Config.Monitoring.MountSettleSeconds $Y4
 
-# 5. Advanced & Tools
 $Page5 = New-SettingsPage "Advanced" "Advanced & MLV Tools Integration"
 $Y5 = [ref][int]20
 $ChkManifest = Add-Field $Page5 "Manifest Enabled" $Config.Manifest.Enabled $Y5 "Check"
@@ -242,10 +245,20 @@ $TxtDriveLetter = Add-Field $Page5 "MLVFS Drive Letter" $Config.MLVFS.DriveLette
 $ChkMLVApp = Add-Field $Page5 "MLVApp Enabled" $Config.MLVApp.Enabled $Y5 "Check"
 $TxtMLVAppPath = Add-Field $Page5 "MLVApp Executable Path" $Config.MLVApp.ExecutablePath $Y5
 
-
-# --- SIDEBAR NAVIGATION BUTTONS ---
+# --- NAVIGATION HELPER ---
 
 $NavButtons = @()
+
+function Select-NavButton {
+    param($Button, $PageName)
+    foreach ($B in $NavButtons) {
+        $B.BackColor = [System.Drawing.Color]::FromArgb(33, 33, 33)
+        $B.ForeColor = $TextColor
+    }
+    $Button.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 50)
+    $Button.ForeColor = $AccentColor
+    Show-SettingsPage $PageName
+}
 
 function Add-NavButton {
     param($Name, $Text, $YPos)
@@ -261,13 +274,7 @@ function Add-NavButton {
     $Btn.Size = New-Object System.Drawing.Size(180, 42)
     $Btn.Tag = $Name
     $Btn.Add_Click({
-        foreach ($B in $NavButtons) {
-            $B.BackColor = [System.Drawing.Color]::FromArgb(33, 33, 33)
-            $B.ForeColor = $TextColor
-        }
-        $this.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 50)
-        $this.ForeColor = $AccentColor
-        Show-SettingsPage $this.Tag
+        Select-NavButton $this $this.Tag
     })
     $Sidebar.Controls.Add($Btn)
     $script:NavButtons += $Btn
@@ -297,13 +304,11 @@ $Separator.Size = New-Object System.Drawing.Size(148, 1)
 $Separator.BackColor = $BorderColor
 $Sidebar.Controls.Add($Separator)
 
-# Add Navigation Items
 $BtnNav1 = Add-NavButton "Destinations" "Storage Routes" 90
 $BtnNav2 = Add-NavButton "Safety" "Card & Safety" 134
 $BtnNav3 = Add-NavButton "Copy" "Copy & Verify" 178
 $BtnNav4 = Add-NavButton "Scanning" "Scanning & Timing" 222
 $BtnNav5 = Add-NavButton "Advanced" "Advanced & Tools" 266
-
 
 # --- FOOTER ACTION BUTTONS ---
 
@@ -319,133 +324,46 @@ $BtnReset.Size = New-Object System.Drawing.Size(120, 36)
 $BtnReset.Add_Click({
     $Confirm = [System.Windows.Forms.MessageBox]::Show("Are you sure you want to reset all fields to their default state?", "Confirm Reset", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
     if ($Confirm -eq [System.Windows.Forms.DialogResult]::Yes) {
-        $DefaultConfig = [PSCustomObject]@{
-            "Version"      = 4
-            "Destinations" = [PSCustomObject]@{
-                "Photos" = "C:\MagicDump\Photos"
-                "MLV"    = "C:\MagicDump\MLVs"
-            }
-            "Organization" = [PSCustomObject]@{
-                "Mode"           = "Flat"
-                "AvailableModes" = @("ByDate", "Flat")
-                "DateFormat"     = "yyyy-MM-dd"
-                "MLVMode"        = "ByDate"
-                "PhotoMode"      = "ByDate"
-            }
-            "FileTypes"    = [PSCustomObject]@{
-                "Photos"    = @(".CR2", ".CR3", ".JPG", ".JPEG", ".JPE", ".PNG", ".TIF", ".TIFF")
-                "MLVMain"   = @(".MLV")
-                "MLVChunks" = [PSCustomObject]@{
-                    "Enabled" = $true
-                    "Pattern" = "^\.M[0-9]+$"
-                }
-            }
-            "Scanning"     = [PSCustomObject]@{
-                "ScanSubfolders"     = $true
-                "IgnoreFolders"      = @("System Volume Information", "`$RECYCLE.BIN")
-                "MinimumCameraFiles" = 1
-            }
-            "Copy"         = [PSCustomObject]@{
-                "SkipExistingSameSize" = $true
-                "ReplaceDifferentSize" = $false
-                "UseTemporaryFiles"    = $false
-                "TemporaryExtension"   = ".importing"
-                "Retries"              = 1
-                "RetryDelaySeconds"    = 1
-            }
-            "Verification" = [PSCustomObject]@{
-                "Enabled"          = $false
-                "Method"           = "None"
-                "AvailableMethods" = @("None", "Size", "SHA256")
-            }
-            "Stability"    = [PSCustomObject]@{
-                "Enabled"      = $false
-                "Checks"       = 1
-                "DelaySeconds" = 1
-            }
-            "Monitoring"   = [PSCustomObject]@{
-                "PollIntervalSeconds" = 1
-                "MountSettleSeconds"  = 1
-            }
-            "Card"         = [PSCustomObject]@{
-                "OnlyRemovableDrives"       = $true
-                "AutoEject"                 = $true
-                "EjectDelaySeconds"         = 2
-                "DeleteSourceAfterImport"   = $false
-                "RequireDeleteConfirmation" = $false
-            }
-            "Safety"       = [PSCustomObject]@{
-                "DryRun"                    = $false
-                "NeverDeleteUnlessVerified" = $false
-                "NeverMoveSource"           = $true
-            }
-            "Manifest"     = [PSCustomObject]@{
-                "Enabled"   = $true
-                "Directory" = "manifests"
-            }
-            "Logging"      = [PSCustomObject]@{
-                "Enabled"   = $true
-                "Directory" = "logs"
-                "FileName"  = "importer.log"
-                "KeepDays"  = 30
-            }
-            "Notifications"= [PSCustomObject]@{
-                "Enabled"          = $true
-                "OnCardDetected"   = $true
-                "OnImportComplete" = $true
-                "OnError"          = $true
-            }
-            "MLVFS"        = [PSCustomObject]@{
-                "Enabled"        = $true
-                "ControllerPath" = "C:\MLVScripts\RightClickMountFolder\MLV_Controller.bat"
-                "DriveLetter"    = "Z:\"
-            }
-            "MLVApp"       = [PSCustomObject]@{
-                "Enabled"        = $true
-                "ExecutablePath" = "C:\MLVScripts\MLVApp\MLVApp.exe"
-            }
-        }
-        
-        $TxtPhotos.Text = $DefaultConfig.Destinations.Photos
-        $TxtMLV.Text = $DefaultConfig.Destinations.MLV
-        $CmbPhotoMode.SelectedItem = $DefaultConfig.Organization.PhotoMode
-        $CmbMLVMode.SelectedItem = $DefaultConfig.Organization.MLVMode
-        $TxtDateFormat.Text = $DefaultConfig.Organization.DateFormat
+        $TxtPhotos.Text = "C:\MagicDump\Photos"
+        $TxtMLV.Text = "C:\MagicDump\MLVs"
+        $CmbPhotoMode.SelectedIndex = 0
+        $CmbMLVMode.SelectedIndex = 0
+        $TxtDateFormat.Text = "yyyy-MM-dd"
 
-        $ChkOnlyRemovable.Checked = $DefaultConfig.Card.OnlyRemovableDrives
-        $ChkAutoEject.Checked = $DefaultConfig.Card.AutoEject
-        $ChkDeleteSource.Checked = $DefaultConfig.Card.DeleteSourceAfterImport
-        $ChkRequireDelConf.Checked = $DefaultConfig.Card.RequireDeleteConfirmation
-        $ChkDryRun.Checked = $DefaultConfig.Safety.DryRun
-        $ChkNeverDelUnver.Checked = $DefaultConfig.Safety.NeverDeleteUnlessVerified
-        $ChkNeverMove.Checked = $DefaultConfig.Safety.NeverMoveSource
+        $ChkOnlyRemovable.Checked = $true
+        $ChkAutoEject.Checked = $true
+        $ChkDeleteSource.Checked = $false
+        $ChkRequireDelConf.Checked = $false
+        $ChkDryRun.Checked = $false
+        $ChkNeverDelUnver.Checked = $false
+        $ChkNeverMove.Checked = $true
 
-        $ChkSkipExist.Checked = $DefaultConfig.Copy.SkipExistingSameSize
-        $ChkReplaceDiff.Checked = $DefaultConfig.Copy.ReplaceDifferentSize
-        $ChkUseTemp.Checked = $DefaultConfig.Copy.UseTemporaryFiles
-        $TxtRetries.Text = $DefaultConfig.Copy.Retries
-        $TxtRetryDelay.Text = $DefaultConfig.Copy.RetryDelaySeconds
-        $ChkVerEnabled.Checked = $DefaultConfig.Verification.Enabled
-        $CmbVerMethod.SelectedItem = $DefaultConfig.Verification.Method
+        $ChkSkipExist.Checked = $true
+        $ChkReplaceDiff.Checked = $false
+        $ChkUseTemp.Checked = $false
+        $TxtRetries.Text = "1"
+        $TxtRetryDelay.Text = "1"
+        $ChkVerEnabled.Checked = $false
+        $CmbVerMethod.SelectedIndex = 0
 
-        $ChkScanSub.Checked = $DefaultConfig.Scanning.ScanSubfolders
-        $TxtMinFiles.Text = $DefaultConfig.Scanning.MinimumCameraFiles
-        $ChkStabEnabled.Checked = $DefaultConfig.Stability.Enabled
-        $TxtStabChecks.Text = $DefaultConfig.Stability.Checks
-        $TxtStabDelay.Text = $DefaultConfig.Stability.DelaySeconds
-        $TxtPollInterval.Text = $DefaultConfig.Monitoring.PollIntervalSeconds
-        $TxtMountSettle.Text = $DefaultConfig.Monitoring.MountSettleSeconds
+        $ChkScanSub.Checked = $true
+        $TxtMinFiles.Text = "1"
+        $ChkStabEnabled.Checked = $false
+        $TxtStabChecks.Text = "1"
+        $TxtStabDelay.Text = "1"
+        $TxtPollInterval.Text = "1"
+        $TxtMountSettle.Text = "1"
 
-        $ChkManifest.Checked = $DefaultConfig.Manifest.Enabled
-        $TxtManifestDir.Text = $DefaultConfig.Manifest.Directory
-        $ChkLogging.Checked = $DefaultConfig.Logging.Enabled
-        $TxtLogDir.Text = $DefaultConfig.Logging.Directory
-        $TxtLogFile.Text = $DefaultConfig.Logging.FileName
-        $ChkMLVFS.Checked = $DefaultConfig.MLVFS.Enabled
-        $TxtControllerPath.Text = $DefaultConfig.MLVFS.ControllerPath
-        $TxtDriveLetter.Text = $DefaultConfig.MLVFS.DriveLetter
-        $ChkMLVApp.Checked = $DefaultConfig.MLVApp.Enabled
-        $TxtMLVAppPath.Text = $DefaultConfig.MLVApp.ExecutablePath
+        $ChkManifest.Checked = $true
+        $TxtManifestDir.Text = "manifests"
+        $ChkLogging.Checked = $true
+        $TxtLogDir.Text = "logs"
+        $TxtLogFile.Text = "importer.log"
+        $ChkMLVFS.Checked = $true
+        $TxtControllerPath.Text = "C:\MLVScripts\RightClickMountFolder\MLV_Controller.bat"
+        $TxtDriveLetter.Text = "Z:\"
+        $ChkMLVApp.Checked = $true
+        $TxtMLVAppPath.Text = "C:\MLVScripts\MLVApp\MLVApp.exe"
 
         [System.Windows.Forms.MessageBox]::Show("Settings restored to default profile values.", "Reset Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
     }
@@ -462,12 +380,32 @@ $BtnSave.FlatAppearance.BorderSize = 0
 $BtnSave.Location = New-Object System.Drawing.Point(362, 532)
 $BtnSave.Size = New-Object System.Drawing.Size(178, 36)
 $BtnSave.Add_Click({
+    # Input validation
+    $ParsedRetries = 0
+    $ParsedRetryDelay = 0
+    $ParsedMinFiles = 0
+    $ParsedStabChecks = 0
+    $ParsedStabDelay = 0
+    $ParsedPollInterval = 0
+    $ParsedMountSettle = 0
+
+    if (-not [int]::TryParse($TxtRetries.Text, [ref]$ParsedRetries) -or
+        -not [int]::TryParse($TxtRetryDelay.Text, [ref]$ParsedRetryDelay) -or
+        -not [int]::TryParse($TxtMinFiles.Text, [ref]$ParsedMinFiles) -or
+        -not [int]::TryParse($TxtStabChecks.Text, [ref]$ParsedStabChecks) -or
+        -not [int]::TryParse($TxtStabDelay.Text, [ref]$ParsedStabDelay) -or
+        -not [int]::TryParse($TxtPollInterval.Text, [ref]$ParsedPollInterval) -or
+        -not [int]::TryParse($TxtMountSettle.Text, [ref]$ParsedMountSettle)) {
+        [System.Windows.Forms.MessageBox]::Show("Please enter valid numeric values for all numeric fields.", "Validation Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        return
+    }
+
     if ($null -eq $Config.Destinations) { $Config | Add-Member -MemberType NoteProperty -Name "Destinations" -Value ([PSCustomObject]@{}) -Force }
     $Config.Destinations.Photos = $TxtPhotos.Text
     $Config.Destinations.MLV = $TxtMLV.Text
     if ($null -eq $Config.Organization) { $Config | Add-Member -MemberType NoteProperty -Name "Organization" -Value ([PSCustomObject]@{}) -Force }
-    $Config.Organization.PhotoMode = $CmbPhotoMode.SelectedItem
-    $Config.Organization.MLVMode = $CmbMLVMode.SelectedItem
+    $Config.Organization.PhotoMode = if ($CmbPhotoMode.SelectedItem) { $CmbPhotoMode.SelectedItem } else { "Flat" }
+    $Config.Organization.MLVMode = if ($CmbMLVMode.SelectedItem) { $CmbMLVMode.SelectedItem } else { "Flat" }
     $Config.Organization.DateFormat = $TxtDateFormat.Text
 
     if ($null -eq $Config.Card) { $Config | Add-Member -MemberType NoteProperty -Name "Card" -Value ([PSCustomObject]@{}) -Force }
@@ -484,22 +422,22 @@ $BtnSave.Add_Click({
     $Config.Copy.SkipExistingSameSize = $ChkSkipExist.Checked
     $Config.Copy.ReplaceDifferentSize = $ChkReplaceDiff.Checked
     $Config.Copy.UseTemporaryFiles = $ChkUseTemp.Checked
-    $Config.Copy.Retries = [int]$TxtRetries.Text
-    $Config.Copy.RetryDelaySeconds = [int]$TxtRetryDelay.Text
+    $Config.Copy.Retries = $ParsedRetries
+    $Config.Copy.RetryDelaySeconds = $ParsedRetryDelay
     if ($null -eq $Config.Verification) { $Config | Add-Member -MemberType NoteProperty -Name "Verification" -Value ([PSCustomObject]@{}) -Force }
     $Config.Verification.Enabled = $ChkVerEnabled.Checked
-    $Config.Verification.Method = $CmbVerMethod.SelectedItem
+    $Config.Verification.Method = if ($CmbVerMethod.SelectedItem) { $CmbVerMethod.SelectedItem } else { "None" }
 
     if ($null -eq $Config.Scanning) { $Config | Add-Member -MemberType NoteProperty -Name "Scanning" -Value ([PSCustomObject]@{}) -Force }
     $Config.Scanning.ScanSubfolders = $ChkScanSub.Checked
-    $Config.Scanning.MinimumCameraFiles = [int]$TxtMinFiles.Text
+    $Config.Scanning.MinimumCameraFiles = $ParsedMinFiles
     if ($null -eq $Config.Stability) { $Config | Add-Member -MemberType NoteProperty -Name "Stability" -Value ([PSCustomObject]@{}) -Force }
     $Config.Stability.Enabled = $ChkStabEnabled.Checked
-    $Config.Stability.Checks = [int]$TxtStabChecks.Text
-    $Config.Stability.DelaySeconds = [int]$TxtStabDelay.Text
+    $Config.Stability.Checks = $ParsedStabChecks
+    $Config.Stability.DelaySeconds = $ParsedStabDelay
     if ($null -eq $Config.Monitoring) { $Config | Add-Member -MemberType NoteProperty -Name "Monitoring" -Value ([PSCustomObject]@{}) -Force }
-    $Config.Monitoring.PollIntervalSeconds = [int]$TxtPollInterval.Text
-    $Config.Monitoring.MountSettleSeconds = [int]$TxtMountSettle.Text
+    $Config.Monitoring.PollIntervalSeconds = $ParsedPollInterval
+    $Config.Monitoring.MountSettleSeconds = $ParsedMountSettle
 
     if ($null -eq $Config.Manifest) { $Config | Add-Member -MemberType NoteProperty -Name "Manifest" -Value ([PSCustomObject]@{}) -Force }
     $Config.Manifest.Enabled = $ChkManifest.Checked
@@ -517,15 +455,12 @@ $BtnSave.Add_Click({
     $Config.MLVApp.Enabled = $ChkMLVApp.Checked
     $Config.MLVApp.ExecutablePath = $TxtMLVAppPath.Text
 
-    $Config | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $ConfigPath -Encoding UTF8
+    $Config | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $ConfigPath -Encoding UTF8 -NoNewline
     [System.Windows.Forms.MessageBox]::Show("All configuration settings saved successfully!", "Success", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
     $Form.Close()
 })
 $ContentPanel.Controls.Add($BtnSave)
 
-# Initialize starting view to Storage & Organization
-Show-SettingsPage "Destinations"
-$BtnNav1.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 50)
-$BtnNav1.ForeColor = $AccentColor
+Select-NavButton $BtnNav1 "Destinations"
 
 [void]$Form.ShowDialog()

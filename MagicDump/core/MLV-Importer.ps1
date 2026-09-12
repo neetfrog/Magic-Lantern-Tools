@@ -4,11 +4,14 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 # ============================================================
-# Magic Dump - Magic Lantern Import Tool
+# Magic Dump - Magic Lantern Import Tool (Fixed & Hardened)
 # Windows 11 / PowerShell 5.1+
 # ============================================================
 
-$ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$ScriptRoot = $PSScriptRoot
+if (-not $ScriptRoot) {
+    $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
+}
 $ConfigPath = Join-Path $ScriptRoot "config.json"
 
 # ============================================================
@@ -158,14 +161,24 @@ $StabilityDelay = [int](
 )
 
 $MLVChunkEnabled = $true
+$MLVChunkPattern = '^\.M[0-9]+$'
+$MLVMainExtensions = @(".MLV")
 
 if ($null -ne $FileTypes) {
-    $MLVChunksObject = Get-ConfigValue $FileTypes "MLVChunks" $null
+    $MLVMainConfig = Get-ConfigValue $FileTypes "MLVMain" $null
+    if ($null -ne $MLVMainConfig) {
+        $MLVMainExtensions = @($MLVMainConfig)
+    }
 
+    $MLVChunksObject = Get-ConfigValue $FileTypes "MLVChunks" $null
     if ($null -ne $MLVChunksObject) {
         $MLVChunkEnabled = [bool](
             Get-ConfigValue $MLVChunksObject "Enabled" $true
         )
+        $PatternVal = Get-ConfigValue $MLVChunksObject "Pattern" ""
+        if (-not [string]::IsNullOrWhiteSpace($PatternVal)) {
+            $MLVChunkPattern = $PatternVal
+        }
     }
 }
 
@@ -253,14 +266,16 @@ $PhotoExtensions = @(
 # DIRECTORIES
 # ============================================================
 
-if (-not (Test-Path -LiteralPath $PhotoDestination)) {
-    New-Item -ItemType Directory -Path $PhotoDestination -Force |
-        Out-Null
-}
+if (-not $DryRun) {
+    if (-not (Test-Path -LiteralPath $PhotoDestination)) {
+        New-Item -ItemType Directory -Path $PhotoDestination -Force |
+            Out-Null
+    }
 
-if (-not (Test-Path -LiteralPath $MLVDestination)) {
-    New-Item -ItemType Directory -Path $MLVDestination -Force |
-        Out-Null
+    if (-not (Test-Path -LiteralPath $MLVDestination)) {
+        New-Item -ItemType Directory -Path $MLVDestination -Force |
+            Out-Null
+    }
 }
 
 $LogDirectoryName = [string](
@@ -274,12 +289,12 @@ $ManifestDirectoryName = [string](
 $LogDirectory = Join-Path $ScriptRoot $LogDirectoryName
 $ManifestDirectory = Join-Path $ScriptRoot $ManifestDirectoryName
 
-if ($LoggingEnabled) {
+if ($LoggingEnabled -and -not $DryRun) {
     New-Item -ItemType Directory -Path $LogDirectory -Force |
         Out-Null
 }
 
-if ($ManifestEnabled) {
+if ($ManifestEnabled -and -not $DryRun) {
     New-Item -ItemType Directory -Path $ManifestDirectory -Force |
         Out-Null
 }
@@ -353,7 +368,7 @@ function Write-Log {
     Write-Host "[$Level] " -NoNewline -ForegroundColor $LevelColor
     Write-Host $Message
 
-    if ($LoggingEnabled) {
+    if ($LoggingEnabled -and -not $DryRun) {
         try {
             Add-Content `
                 -LiteralPath $LogFile `
@@ -482,13 +497,15 @@ function Get-FileType {
         return "Photo"
     }
 
-    if ($Extension -eq ".MLV") {
-        return "MLV"
+    foreach ($MainExt in $MLVMainExtensions) {
+        if ($Extension -eq $MainExt.ToUpperInvariant()) {
+            return "MLV"
+        }
     }
 
     if (
         $MLVChunkEnabled -and
-        $Extension -match '^\.M[0-9]+$'
+        $Extension -match $MLVChunkPattern
     ) {
         return "MLVChunk"
     }
@@ -509,22 +526,51 @@ function Get-CameraFiles {
         return @()
     }
 
+    $IgnoreFoldersList = @("System Volume Information", "`$RECYCLE.BIN")
+    $ScanningConfig = Get-ConfigValue $Config "Scanning" $null
+    if ($null -ne $ScanningConfig) {
+        $IgnoredConfigList = Get-ConfigValue $ScanningConfig "IgnoreFolders" $null
+        if ($null -ne $IgnoredConfigList) {
+            $IgnoreFoldersList = @($IgnoredConfigList)
+        }
+    }
+
     if ($ScanSubfolders) {
-        $Files = @(
-            Get-ChildItem `
-                -LiteralPath $Root `
-                -File `
-                -Recurse `
-                -ErrorAction SilentlyContinue
-        )
+        try {
+            $Files = @(
+                Get-ChildItem `
+                    -LiteralPath $Root `
+                    -File `
+                    -Recurse `
+                    -ErrorAction SilentlyContinue |
+                    Where-Object {
+                        $MatchIgnore = $false
+                        foreach ($Ignored in $IgnoreFoldersList) {
+                            if ($_.FullName -like "*\$Ignored\*") {
+                                $MatchIgnore = $true
+                                break
+                            }
+                        }
+                        -not $MatchIgnore
+                    }
+            )
+        }
+        catch {
+            $Files = @()
+        }
     }
     else {
-        $Files = @(
-            Get-ChildItem `
-                -LiteralPath $Root `
-                -File `
-                -ErrorAction SilentlyContinue
-        )
+        try {
+            $Files = @(
+                Get-ChildItem `
+                    -LiteralPath $Root `
+                    -File `
+                    -ErrorAction SilentlyContinue
+            )
+        }
+        catch {
+            $Files = @()
+        }
     }
 
     $Result = @(
@@ -544,7 +590,7 @@ function Get-CameraFiles {
 }
 
 # ============================================================
-# FILE STABILITY
+# FILE STABILITY (FIXED)
 # ============================================================
 
 function Test-FileStable {
@@ -552,18 +598,15 @@ function Test-FileStable {
         [System.IO.FileInfo]$File
     )
 
-    if (-not $StabilityEnabled) {
-        return $true
-    }
-
-    if ($StabilityChecks -le 0) {
+    if (-not $StabilityEnabled -or $StabilityChecks -le 0) {
         return $true
     }
 
     $PreviousSize = -1
+    $StableCount = 0
+    $MaxAttempts = [math]::Max($StabilityChecks * 5, 10)
 
-    for ($i = 0; $i -lt $StabilityChecks; $i++) {
-
+    for ($i = 0; $i -lt $MaxAttempts; $i++) {
         if (-not (Test-Path -LiteralPath $File.FullName)) {
             return $false
         }
@@ -575,34 +618,31 @@ function Test-FileStable {
 
             $CurrentSize = [int64]$Current.Length
 
-            if ($PreviousSize -ge 0) {
-                if ($CurrentSize -ne $PreviousSize) {
-                    $PreviousSize = $CurrentSize
-
-                    if ($StabilityDelay -gt 0) {
-                        Start-Sleep -Seconds $StabilityDelay
-                    }
-
-                    continue
+            if ($CurrentSize -eq $PreviousSize) {
+                $StableCount++
+                if ($StableCount -ge $StabilityChecks) {
+                    return $true
                 }
             }
-
-            $PreviousSize = $CurrentSize
-
-            if ($StabilityDelay -gt 0) {
-                Start-Sleep -Seconds $StabilityDelay
+            else {
+                $PreviousSize = $CurrentSize
+                $StableCount = 0
             }
         }
         catch {
             return $false
         }
+
+        if ($StabilityDelay -gt 0) {
+            Start-Sleep -Seconds $StabilityDelay
+        }
     }
 
-    return $true
+    return $false
 }
 
 # ============================================================
-# DESTINATION PATH
+# DESTINATION PATH (DRY-RUN FIXED)
 # ============================================================
 
 function Get-DestinationPath {
@@ -621,17 +661,17 @@ function Get-DestinationPath {
     }
 
     if ($CurrentMode -eq "ByDate") {
-
         $DateFolder = $File.LastWriteTime.ToString($DateFormat)
-
         $Folder = Join-Path $Root $DateFolder
 
         if (-not (Test-Path -LiteralPath $Folder)) {
-            New-Item `
-                -ItemType Directory `
-                -Path $Folder `
-                -Force |
-                Out-Null
+            if (-not $DryRun) {
+                New-Item `
+                    -ItemType Directory `
+                    -Path $Folder `
+                    -Force |
+                    Out-Null
+            }
         }
 
         return Join-Path $Folder $File.Name
@@ -733,7 +773,7 @@ function Test-Copy {
 }
 
 # ============================================================
-# COPY FILE (WITH PROGRESS BAR)
+# COPY FILE (WITH TIMESTAMP PRESERVATION & PROGRESS)
 # ============================================================
 
 function Copy-SafeFile {
@@ -745,7 +785,6 @@ function Copy-SafeFile {
     )
 
     if (Test-Path -LiteralPath $Destination) {
-
         try {
             $Existing = Get-Item `
                 -LiteralPath $Destination `
@@ -760,7 +799,6 @@ function Copy-SafeFile {
             $SkipExisting -and
             $Existing.Length -eq $SourceFile.Length
         ) {
-
             Write-Host "  ℹ️ " -NoNewline -ForegroundColor Cyan
             Write-Host "Skipped (Already Exists): " -NoNewline -ForegroundColor DarkGray
             Write-Host "$($SourceFile.Name)"
@@ -768,11 +806,9 @@ function Copy-SafeFile {
             if (-not (Test-Copy `
                 $SourceFile.FullName `
                 $Destination)) {
-
                 Write-Log `
                     "Existing destination failed verification: $Destination" `
                     "ERROR"
-
                 return $false
             }
 
@@ -790,19 +826,20 @@ function Copy-SafeFile {
         Write-Host "  ⚠️ " -NoNewline -ForegroundColor Yellow
         Write-Host "Overwriting conflicting file: $Destination" -ForegroundColor DarkGray
 
-        Remove-Item `
-            -LiteralPath $Destination `
-            -Force `
-            -ErrorAction Stop
+        if (-not $DryRun) {
+            Remove-Item `
+                -LiteralPath $Destination `
+                -Force `
+                -ErrorAction Stop
+        }
     }
 
     for ($Attempt = 1; $Attempt -le $Retries; $Attempt++) {
-
         $TempPath = $Destination
 
         if ($UseTemporary) {
             $TempPath = $Destination + $TemporaryExtension
-            if (Test-Path -LiteralPath $TempPath) {
+            if (-not $DryRun -and (Test-Path -LiteralPath $TempPath)) {
                 Remove-Item -LiteralPath $TempPath -Force -ErrorAction SilentlyContinue
             }
         }
@@ -827,8 +864,8 @@ function Copy-SafeFile {
                 New-Item -ItemType Directory -Path $DestinationDirectory -Force | Out-Null
             }
 
-            $SourceStream = New-Object System.IO.FileStream($SourceFile.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
-            $DestStream = New-Object System.IO.FileStream($TempPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write)
+            $SourceStream = New-Object System.IO.FileStream($SourceFile.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read, 65536, [System.IO.FileOptions]::SequentialScan)
+            $DestStream = New-Object System.IO.FileStream($TempPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None, 65536, [System.IO.FileOptions]::WriteThrough)
             
             $BufferSize = 1MB
             $Buffer = New-Object byte[] $BufferSize
@@ -880,6 +917,15 @@ function Copy-SafeFile {
                 throw "Final destination verification failed."
             }
 
+            # Preserve source timestamps
+            try {
+                [System.IO.File]::SetLastWriteTimeUtc($Destination, $SourceFile.LastWriteTimeUtc)
+                [System.IO.File]::SetCreationTimeUtc($Destination, $SourceFile.CreationTimeUtc)
+            }
+            catch {
+                # Non-fatal timestamp warning
+            }
+
             Write-Host "      └─ " -NoNewline -ForegroundColor DarkGray
             Write-Host "✔ SUCCESS & VERIFIED" -ForegroundColor Green
 
@@ -895,7 +941,7 @@ function Copy-SafeFile {
             Write-Log "Attempt $Attempt failed for $($SourceFile.Name): $($_.Exception.Message)" "ERROR"
             Write-Host "      └─ ❌ FAILED: $($_.Exception.Message)" -ForegroundColor Red
 
-            if (Test-Path -LiteralPath $TempPath) {
+            if (-not $DryRun -and (Test-Path -LiteralPath $TempPath)) {
                 Remove-Item -LiteralPath $TempPath -Force -ErrorAction SilentlyContinue
             }
 
@@ -920,12 +966,18 @@ function Get-MLVGroups {
     $Groups = @{}
 
     foreach ($Item in @($MLVFiles)) {
-
         $File = $Item.File
         $Extension = $File.Extension.ToUpperInvariant()
 
-        if ($Extension -eq ".MLV") {
+        $IsMain = $false
+        foreach ($MainExt in $MLVMainExtensions) {
+            if ($Extension -eq $MainExt.ToUpperInvariant()) {
+                $IsMain = $true
+                break
+            }
+        }
 
+        if ($IsMain) {
             $Key = Join-Path `
                 $File.DirectoryName `
                 $File.BaseName
@@ -939,12 +991,10 @@ function Get-MLVGroups {
     }
 
     foreach ($Item in @($MLVFiles)) {
-
         $File = $Item.File
         $Extension = $File.Extension.ToUpperInvariant()
 
-        if ($Extension -match '^\.M[0-9]+$') {
-
+        if ($MLVChunkEnabled -and ($Extension -match $MLVChunkPattern)) {
             $BaseName = [System.IO.Path]::GetFileNameWithoutExtension(
                 $File.Name
             )
@@ -962,13 +1012,20 @@ function Get-MLVGroups {
     }
 
     foreach ($Key in @($Groups.Keys)) {
-
         $Groups[$Key] = @(
             $Groups[$Key] |
                 Sort-Object {
                     $Extension = $_.File.Extension.ToUpperInvariant()
 
-                    if ($Extension -eq ".MLV") {
+                    $IsMain = $false
+                    foreach ($MainExt in $MLVMainExtensions) {
+                        if ($Extension -eq $MainExt.ToUpperInvariant()) {
+                            $IsMain = $true
+                            break
+                        }
+                    }
+
+                    if ($IsMain) {
                         return -1
                     }
 
@@ -996,7 +1053,7 @@ function Write-ImportManifest {
         [bool]$Success
     )
 
-    if (-not $ManifestEnabled) {
+    if (-not $ManifestEnabled -or $DryRun) {
         return
     }
 
@@ -1029,7 +1086,7 @@ function Write-ImportManifest {
             )
         }
 
-        $ManifestData | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $ManifestFilePath -Encoding UTF8
+        $ManifestData | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $ManifestFilePath -Encoding UTF8 -NoNewline
         Write-Log "Manifest saved: $ManifestFilePath"
     }
     catch {
@@ -1090,6 +1147,30 @@ function Remove-ImportedSource {
     }
 
     return $true
+}
+
+# ============================================================
+# HELPER: GET VOLUME FREE SPACE (UNC / LOCAL ROBUST)
+# ============================================================
+
+function Get-VolumeFreeSpace {
+    param(
+        [string]$PathRoot
+    )
+    try {
+        if ($PathRoot -match '^[a-zA-Z]:\\') {
+            $DriveLetter = $PathRoot.Substring(0, 2)
+            $DriveInfo = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='$DriveLetter'" -ErrorAction Stop
+            return [double]$DriveInfo.FreeSpace
+        }
+        else {
+            $DriveInfoNet = [System.IO.DriveInfo]::new($PathRoot)
+            return [double]$DriveInfoNet.TotalFreeSpace
+        }
+    }
+    catch {
+        return -1
+    }
 }
 
 # ============================================================
@@ -1170,40 +1251,44 @@ function Import-Card {
     }
 
     # ============================================================
-    # DISK SPACE PRE-CHECK
+    # INDEPENDENT DISK SPACE PRE-CHECKS
     # ============================================================
-    $TargetDriveRoot = [System.IO.Path]::GetPathRoot([string]$MLVDestination)
-    [double]$FreeSpace = -1
-    
-    try {
-        if ($TargetDriveRoot -match '^[a-zA-Z]:\\') {
-            $DriveLetter = $TargetDriveRoot.Substring(0, 2)
-            $DriveInfo = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='$DriveLetter'" -ErrorAction Stop
-            $FreeSpace = [double]$DriveInfo.FreeSpace
-        }
-        else {
-            $DriveInfoNet = [System.IO.DriveInfo]::new($TargetDriveRoot)
-            $FreeSpace = [double]$DriveInfoNet.TotalFreeSpace
-        }
+    $PhotoDriveRoot = [System.IO.Path]::GetPathRoot([string]$PhotoDestination)
+    $MLVDriveRoot = [System.IO.Path]::GetPathRoot([string]$MLVDestination)
 
-        [double]$RequiredSpace = $TotalBytes + 1GB
+    [double]$PhotoFreeSpace = -1
+    [double]$MLVFreeSpace = -1
 
-        if ($FreeSpace -ge 0 -and $FreeSpace -lt $RequiredSpace) {
-            Write-Log "ABORT: Insufficient disk space on $TargetDriveRoot. Required: $(Format-Bytes $RequiredSpace), Available: $(Format-Bytes $FreeSpace)" "ERROR"
-            
+    if ($PhotoBytes -gt 0) {
+        $PhotoFreeSpace = Get-VolumeFreeSpace -PathRoot $PhotoDriveRoot
+        [double]$RequiredPhotoSpace = $PhotoBytes + 512MB
+        if ($PhotoFreeSpace -ge 0 -and $PhotoFreeSpace -lt $RequiredPhotoSpace) {
+            Write-Log "ABORT: Insufficient disk space on Photo destination ($PhotoDriveRoot). Required: $(Format-Bytes $RequiredPhotoSpace), Available: $(Format-Bytes $PhotoFreeSpace)" "ERROR"
             Write-Host ""
-            Write-Divider "❌ ERROR: INSUFFICIENT DISK SPACE"
-            Write-Host " 💾 Destination Volume: $TargetDriveRoot" -ForegroundColor Yellow
-            Write-Host " 📦 Required Space:     $(Format-Bytes $RequiredSpace)" -ForegroundColor Yellow
-            Write-Host " 📉 Available Space:    $(Format-Bytes $FreeSpace)" -ForegroundColor Red
+            Write-Divider "❌ ERROR: INSUFFICIENT DISK SPACE (PHOTOS)"
+            Write-Host " 💾 Destination Volume: $PhotoDriveRoot" -ForegroundColor Yellow
+            Write-Host " 📦 Required Space:     $(Format-Bytes $RequiredPhotoSpace)" -ForegroundColor Yellow
+            Write-Host " 📉 Available Space:    $(Format-Bytes $PhotoFreeSpace)" -ForegroundColor Red
             Write-Divider
-
-            Show-Notification "MagicDump" "Import aborted: Insufficient space on $TargetDriveRoot"
+            Show-Notification "MagicDump" "Import aborted: Insufficient space on $PhotoDriveRoot"
             return $false
         }
     }
-    catch {
-        Write-Log "Could not verify disk space for $TargetDriveRoot : $($_.Exception.Message)" "WARN"
+
+    if ($MLVBytes -gt 0) {
+        $MLVFreeSpace = Get-VolumeFreeSpace -PathRoot $MLVDriveRoot
+        [double]$RequiredMLVSpace = $MLVBytes + 1GB
+        if ($MLVFreeSpace -ge 0 -and $MLVFreeSpace -lt $RequiredMLVSpace) {
+            Write-Log "ABORT: Insufficient disk space on MLV destination ($MLVDriveRoot). Required: $(Format-Bytes $RequiredMLVSpace), Available: $(Format-Bytes $MLVFreeSpace)" "ERROR"
+            Write-Host ""
+            Write-Divider "❌ ERROR: INSUFFICIENT DISK SPACE (MLV)"
+            Write-Host " 💾 Destination Volume: $MLVDriveRoot" -ForegroundColor Yellow
+            Write-Host " 📦 Required Space:     $(Format-Bytes $RequiredMLVSpace)" -ForegroundColor Yellow
+            Write-Host " 📉 Available Space:    $(Format-Bytes $MLVFreeSpace)" -ForegroundColor Red
+            Write-Divider
+            Show-Notification "MagicDump" "Import aborted: Insufficient space on $MLVDriveRoot"
+            return $false
+        }
     }
 
     Write-Host "  📊 [Stats] " -NoNewline -ForegroundColor Cyan
@@ -1213,13 +1298,6 @@ function Import-Card {
 
     Write-Host "          ├─ 🖼️ Photos : $PhotoFilesCount file(s) ($(Format-Bytes $PhotoBytes))" -ForegroundColor Cyan
     Write-Host "          └─ 🎬 MLVs   : $MLVFilesCount file(s) ($(Format-Bytes $MLVBytes))" -ForegroundColor Cyan
-
-    if ($FreeSpace -ge 0) {
-        Write-Host "  💾 [Disk]  " -NoNewline -ForegroundColor Cyan
-        Write-Host "Free Space: " -NoNewline -ForegroundColor DarkGray
-        Write-Host "$(Format-Bytes $FreeSpace) " -NoNewline -ForegroundColor Green
-        Write-Host "available on $TargetDriveRoot" -ForegroundColor DarkGray
-    }
 
     if ($DeleteSource) {
         Write-Host ""
@@ -1233,12 +1311,10 @@ function Import-Card {
     [int]$FileNumber = 0
 
     foreach ($Work in @($WorkItems)) {
-
         $GroupSuccess = $true
         $SuccessfullyCopiedInGroup = New-Object System.Collections.ArrayList
 
         foreach ($Item in @($Work.Group)) {
-
             $FileNumber++
 
             if (-not (Test-FileStable $Item.File)) {
@@ -1268,7 +1344,7 @@ function Import-Card {
 
         if (-not $GroupSuccess) {
             foreach ($CopiedDest in $SuccessfullyCopiedInGroup) {
-                if (Test-Path -LiteralPath $CopiedDest) {
+                if (-not $DryRun -and (Test-Path -LiteralPath $CopiedDest)) {
                     Write-Host "  🧹 [Cleanup] Removing partial file: $CopiedDest" -ForegroundColor Yellow
                     Remove-Item -LiteralPath $CopiedDest -Force -ErrorAction SilentlyContinue
                 }
@@ -1295,14 +1371,19 @@ function Import-Card {
     Write-ImportManifest -DriveRoot $DriveRoot -WorkItems $WorkItems -Success $OverallSuccess
 
     $MLVFSEnabled = [bool](Get-ConfigValue $MLVFS "Enabled" $false)
-    if ($MLVFSEnabled -and $OverallSuccess -and $MLVFiles.Count -gt 0) {
+    if ($MLVFSEnabled -and $OverallSuccess -and $MLVFiles.Count -gt 0 -and (-not $DryRun)) {
         $ControllerPath = [string](Get-ConfigValue $MLVFS "ControllerPath" "")
         if (Test-Path -LiteralPath $ControllerPath) {
             $ImportedMLVFolders = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
             foreach ($Work in @($WorkItems)) {
                 if ($Work.Type -eq "MLVGroup") {
                     foreach ($Item in $Work.Group) {
-                        if ($Item.File.Extension.ToUpperInvariant() -eq ".MLV") {
+                        $Ext = $Item.File.Extension.ToUpperInvariant()
+                        $IsMainExt = $false
+                        foreach ($M in $MLVMainExtensions) {
+                            if ($Ext -eq $M.ToUpperInvariant()) { $IsMainExt = $true; break }
+                        }
+                        if ($IsMainExt) {
                             $ResolvedDest = Get-DestinationPath $Item.File "MLV"
                             $ParentDir = Split-Path -Path $ResolvedDest -Parent
                             [void]$ImportedMLVFolders.Add($ParentDir)
@@ -1311,12 +1392,7 @@ function Import-Card {
                 }
             }
 
-            if ($ImportedMLVFolders.Count -eq 1) {
-                $TargetMountPath = @($ImportedMLVFolders)[0]
-            }
-            else {
-                $TargetMountPath = $MLVDestination
-            }
+            $TargetMountPath = if ($ImportedMLVFolders.Count -eq 1) { @($ImportedMLVFolders)[0] } else { $MLVDestination }
 
             Write-Host ""
             Write-Host "  💽 [MLVFS] " -NoNewline -ForegroundColor Magenta
@@ -1325,7 +1401,7 @@ function Import-Card {
 
             try {
                 & "$ControllerPath" "mount" "$TargetMountPath"
-                Write-Host "  💽 [MLVFS] Mounted successfully to Z:\ ($TargetMountPath)" -ForegroundColor Green
+                Write-Host "  💽 [MLVFS] Mounted successfully ($TargetMountPath)" -ForegroundColor Green
             }
             catch {
                 Write-Log "Failed to mount MLV destination: $($_.Exception.Message)" "ERROR"
@@ -1335,7 +1411,7 @@ function Import-Card {
     }
 
     $MLVAppEnabled = [bool](Get-ConfigValue $MLVApp "Enabled" $false)
-    if ($MLVAppEnabled -and $OverallSuccess -and $MLVFiles.Count -gt 0) {
+    if ($MLVAppEnabled -and $OverallSuccess -and $MLVFiles.Count -gt 0 -and (-not $DryRun)) {
         $MLVAppPath = [string](Get-ConfigValue $MLVApp "ExecutablePath" "C:\MLVScripts\MLVApp\MLVApp.exe")
         if (Test-Path -LiteralPath $MLVAppPath) {
             Write-Host ""
@@ -1348,7 +1424,12 @@ function Import-Card {
                 foreach ($Work in @($WorkItems)) {
                     if ($Work.Type -eq "MLVGroup") {
                         foreach ($Item in $Work.Group) {
-                            if ($Item.File.Extension.ToUpperInvariant() -eq ".MLV") {
+                            $Ext = $Item.File.Extension.ToUpperInvariant()
+                            $IsMainExt = $false
+                            foreach ($M in $MLVMainExtensions) {
+                                if ($Ext -eq $M.ToUpperInvariant()) { $IsMainExt = $true; break }
+                            }
+                            if ($IsMainExt) {
                                 $DestinationPath = Get-DestinationPath $Item.File "MLV"
                                 if (Test-Path -LiteralPath $DestinationPath) {
                                     $NormalizedPath = $DestinationPath -replace '\\', '/'
@@ -1400,7 +1481,7 @@ function Import-Card {
                     }
                     
                     [void]$XmlBuilder.AppendLine('</mlv_files>')
-                    Set-Content -LiteralPath $SessionFilePath -Value $XmlBuilder.ToString() -Encoding UTF8
+                    Set-Content -LiteralPath $SessionFilePath -Value $XmlBuilder.ToString() -Encoding UTF8 -NoNewline
                     
                     Start-Process -FilePath $MLVAppPath -ArgumentList "`"$SessionFilePath`""
                     Write-Host "  🎬 [MLVApp] Opened successfully." -ForegroundColor Green
@@ -1560,7 +1641,6 @@ Write-Host "  ℹ️ Monitoring drives for camera cards..." -ForegroundColor Cya
 Write-Host ""
 
 while ($true) {
-
     try {
         $Drives = @(Get-EligibleDrives)
 
@@ -1590,7 +1670,6 @@ while ($true) {
                 continue
             }
 
-            # Enqueue the detected camera card safely to prevent concurrent collisions
             $CardQueue.Enqueue($Root)
             $QueuedDrives[$Root] = $true
             
@@ -1599,7 +1678,6 @@ while ($true) {
             Show-Notification "MagicDump" "Camera card queued: $Root"
         }
 
-        # Process the queue sequentially to avoid write collisions on destinations
         while ($CardQueue.Count -gt 0) {
             $CurrentRoot = $CardQueue.Dequeue()
 
