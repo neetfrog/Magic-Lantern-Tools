@@ -642,8 +642,37 @@ function Test-FileStable {
 }
 
 # ============================================================
-# DESTINATION PATH (DRY-RUN FIXED)
+# DESTINATION PATH & SESSION MANAGEMENT
 # ============================================================
+
+$script:CurrentSessionMLVRoot = $null
+
+function Initialize-CardSessionFolder {
+    param([array]$MLVFiles)
+    
+    if ($MLVFiles.Count -eq 0) {
+        $script:CurrentSessionMLVRoot = $MLVDestination
+        return
+    }
+
+    $dates = @($MLVFiles | ForEach-Object { $_.File.LastWriteTime.Date } | Select-Object -Unique | Sort-Object)
+    $minDate = $dates[0]
+    $maxDate = $dates[$dates.Count - 1]
+
+    if ($minDate -eq $maxDate) {
+        $rangeName = $minDate.ToString($DateFormat)
+    } else {
+        if ($minDate.Month -eq $maxDate.Month -and $minDate.Year -eq $maxDate.Year) {
+            $rangeName = "{0}_to_{1}" -f $minDate.ToString("yyyy-MM-dd"), $maxDate.ToString("dd")
+        } elseif ($minDate.Year -eq $maxDate.Year) {
+            $rangeName = "{0}_to_{1}" -f $minDate.ToString("yyyy-MM-dd"), $maxDate.ToString("MM-dd")
+        } else {
+            $rangeName = "{0}_to_{1}" -f $minDate.ToString("yyyy-MM-dd"), $maxDate.ToString("yyyy-MM-dd")
+        }
+    }
+
+    $script:CurrentSessionMLVRoot = Join-Path $MLVDestination $rangeName
+}
 
 function Get-DestinationPath {
     param(
@@ -656,7 +685,7 @@ function Get-DestinationPath {
         $CurrentMode = $PhotoOrganizationMode
     }
     else {
-        $Root = $MLVDestination
+        $Root = if ($script:CurrentSessionMLVRoot) { $script:CurrentSessionMLVRoot } else { $MLVDestination }
         $CurrentMode = $MLVOrganizationMode
     }
 
@@ -1197,6 +1226,10 @@ function Import-Card {
 
     $Photos = @($Files | Where-Object { $_.Type -eq "Photo" })
     $MLVFiles = @($Files | Where-Object { $_.Type -in @("MLV", "MLVChunk") })
+    
+    # Initialize the multi-day session root folder based on card's MLV dates
+    Initialize-CardSessionFolder $MLVFiles
+
     $MLVGroups = Get-MLVGroups $MLVFiles
 
     $WorkItems = New-Object System.Collections.ArrayList
@@ -1374,25 +1407,8 @@ function Import-Card {
     if ($MLVFSEnabled -and $OverallSuccess -and $MLVFiles.Count -gt 0 -and (-not $DryRun)) {
         $ControllerPath = [string](Get-ConfigValue $MLVFS "ControllerPath" "")
         if (Test-Path -LiteralPath $ControllerPath) {
-            $ImportedMLVFolders = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-            foreach ($Work in @($WorkItems)) {
-                if ($Work.Type -eq "MLVGroup") {
-                    foreach ($Item in $Work.Group) {
-                        $Ext = $Item.File.Extension.ToUpperInvariant()
-                        $IsMainExt = $false
-                        foreach ($M in $MLVMainExtensions) {
-                            if ($Ext -eq $M.ToUpperInvariant()) { $IsMainExt = $true; break }
-                        }
-                        if ($IsMainExt) {
-                            $ResolvedDest = Get-DestinationPath $Item.File "MLV"
-                            $ParentDir = Split-Path -Path $ResolvedDest -Parent
-                            [void]$ImportedMLVFolders.Add($ParentDir)
-                        }
-                    }
-                }
-            }
-
-            $TargetMountPath = if ($ImportedMLVFolders.Count -eq 1) { @($ImportedMLVFolders)[0] } else { $MLVDestination }
+            # Target the multi-day session root folder for mounting
+            $TargetMountPath = if ($script:CurrentSessionMLVRoot) { $script:CurrentSessionMLVRoot } else { $MLVDestination }
 
             Write-Host ""
             Write-Host "  💽 [MLVFS] " -NoNewline -ForegroundColor Magenta
